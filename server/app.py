@@ -11,10 +11,27 @@ import yt_dlp
 DIST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'dist'))
 
 app = Flask(__name__, static_folder=DIST_DIR, static_url_path='')
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 TEMP_DIR = os.path.join(tempfile.gettempdir(), 'annotatex_videos')
 os.makedirs(TEMP_DIR, exist_ok=True)
+
+# Global CORS preflight handler to guarantee 200 OK for any OPTIONS request
+@app.before_request
+def handle_preflight():
+    if request.method == 'OPTIONS':
+        res = Response(status=200)
+        res.headers["Access-Control-Allow-Origin"] = "*"
+        res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept"
+        res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        return res
+
+@app.after_request
+def after_request(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    return response
 
 @app.errorhandler(404)
 def handle_404(e):
@@ -28,7 +45,7 @@ def handle_404(e):
 def handle_500(e):
     return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
-@app.route('/api/health', methods=['GET'])
+@app.route('/api/health', methods=['GET', 'OPTIONS'])
 def health():
     return jsonify({
         'status': 'online',
@@ -42,9 +59,6 @@ def extract_youtube():
     Downloads or extracts direct video streaming info from YouTube, Reddit or any URL using yt-dlp.
     Returns direct stream URL and metadata.
     """
-    if request.method == 'OPTIONS':
-        return jsonify({'status': 'ok'})
-
     data = request.get_json() or {}
     url = data.get('url', '').strip()
     if not url:
@@ -77,6 +91,7 @@ def extract_youtube():
                 'duration': info.get('duration', 0),
                 'thumbnail': info.get('thumbnail'),
                 'streamUrl': video_url,
+                'video_url': video_url,
                 'width': info.get('width', 1280),
                 'height': info.get('height', 720),
             })
@@ -89,9 +104,6 @@ def download_and_extract_frames():
     Downloads a video from YouTube/URL, extracts frames with OpenCV at exact sample intervals/FPS,
     and returns base64 image frames to eliminate CORS and browser sandbox issues.
     """
-    if request.method == 'OPTIONS':
-        return jsonify({'status': 'ok'})
-
     data = request.get_json() or {}
     url = data.get('url', '').strip()
     interval_sec = float(data.get('intervalSec') or data.get('interval') or 2.0)
@@ -176,9 +188,6 @@ def live_stream_snapshot():
     """
     Captures a high-resolution snapshot from RTSP, HLS, or YouTube Live stream.
     """
-    if request.method == 'OPTIONS':
-        return jsonify({'status': 'ok'})
-
     data = request.get_json() or {}
     stream_url = data.get('streamUrl', '').strip()
     if not stream_url:
