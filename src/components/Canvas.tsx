@@ -218,8 +218,42 @@ export const Canvas: React.FC<CanvasProps> = ({
         else if (activeTool === 'polyline') finishPolyline(drawingState.currentPoints);
       }
 
-      if ((e.key === 'Delete' || e.key === 'Backspace') && effectiveSelectedIds.length > 0) {
-        effectiveSelectedIds.forEach((id) => onDeleteAnnotation(id));
+      // 5. Delete Single Vertex or Entire Annotation (Delete / Backspace / X)
+      if (e.key === 'Delete' || e.key === 'Backspace' || e.key === 'x' || e.key === 'X') {
+        const targetVertexIdx = drawingState.selectedVertexIndex !== null 
+          ? drawingState.selectedVertexIndex 
+          : (hoveredVertex ? hoveredVertex.vertexIndex : null);
+        const targetAnnId = (drawingState.selectedVertexIndex !== null && effectiveSelectedIds[0])
+          ? effectiveSelectedIds[0]
+          : (hoveredVertex ? hoveredVertex.annId : null);
+
+        if (targetVertexIdx !== null && targetAnnId && image) {
+          const targetAnn = image.annotations.find((a) => a.id === targetAnnId);
+          if (targetAnn && (targetAnn.type === 'polygon' || targetAnn.type === 'polyline' || targetAnn.type === 'brush')) {
+            e.preventDefault();
+            if (targetAnn.points.length > 3) {
+              const updatedPts = targetAnn.points.filter((_, idx) => idx !== targetVertexIdx);
+              onUpdateAnnotation({ ...targetAnn, points: updatedPts });
+              setDrawingState((prev) => ({ ...prev, selectedVertexIndex: null }));
+              setHoveredVertex(null);
+              return;
+            } else {
+              onDeleteAnnotation(targetAnn.id);
+              setDrawingState((prev) => ({ ...prev, selectedVertexIndex: null }));
+              setHoveredVertex(null);
+              return;
+            }
+          }
+        }
+
+        // Delete entire selected annotation(s)
+        if (effectiveSelectedIds.length > 0) {
+          e.preventDefault();
+          effectiveSelectedIds.forEach((id) => onDeleteAnnotation(id));
+          setDrawingState((prev) => ({ ...prev, selectedVertexIndex: null }));
+          setHoveredVertex(null);
+          return;
+        }
       }
 
       if (e.altKey && (e.key === 'c' || e.key === 'C') && effectiveSelectedIds[0] && image) {
@@ -733,9 +767,38 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
   };
 
-  const handleDoubleClick = () => {
-    if (drawingState.isDrawing && activeTool === 'polygon') finishPolygon(drawingState.currentPoints);
-    else if (drawingState.isDrawing && activeTool === 'polyline') finishPolyline(drawingState.currentPoints);
+  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (drawingState.isDrawing && activeTool === 'polygon') {
+      finishPolygon(drawingState.currentPoints);
+      return;
+    }
+    if (drawingState.isDrawing && activeTool === 'polyline') {
+      finishPolyline(drawingState.currentPoints);
+      return;
+    }
+
+    // Double-click on a vertex deletes that vertex
+    const imgCoord = screenToImageCoords(e.clientX, e.clientY);
+    if (imgCoord && image) {
+      const threshold = 12 / transform.scale;
+      for (const ann of image.annotations) {
+        if (ann.visible === false || ann.locked) continue;
+        if (ann.type === 'polygon' || ann.type === 'polyline' || ann.type === 'brush') {
+          const vIdx = findNearbyVertexIndex(imgCoord, ann.points, threshold);
+          if (vIdx !== -1) {
+            if (ann.points.length > 3) {
+              const updatedPts = ann.points.filter((_, idx) => idx !== vIdx);
+              onUpdateAnnotation({ ...ann, points: updatedPts });
+              setDrawingState((prev) => ({ ...prev, selectedVertexIndex: null }));
+              setHoveredVertex(null);
+            } else {
+              onDeleteAnnotation(ann.id);
+            }
+            return;
+          }
+        }
+      }
+    }
   };
 
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {

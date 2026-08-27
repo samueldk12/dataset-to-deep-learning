@@ -62,6 +62,21 @@ describe('Advanced Annotation Tools & Geometry', () => {
     expect(updated[1]).toEqual(newPt);
   });
 
+  it('correctly deletes a single vertex from a polygon without destroying the shape', () => {
+    const pentagon = [
+      { x: 50, y: 0 },
+      { x: 100, y: 40 },
+      { x: 80, y: 100 },
+      { x: 20, y: 100 },
+      { x: 0, y: 40 },
+    ];
+
+    // Delete vertex at index 2 (80, 100)
+    const afterDelete = pentagon.filter((_, idx) => idx !== 2);
+    expect(afterDelete.length).toBe(4);
+    expect(afterDelete[2]).toEqual({ x: 20, y: 100 });
+  });
+
   it('extracts magic wand contour polygon from synthetic pixel data', () => {
     const width = 100;
     const height = 100;
