@@ -9,7 +9,14 @@ import {
   findClosestEdge, 
   findBBoxHandle, 
   getBBoxHandles,
-  computeConvexHull 
+  computeConvexHull,
+  create3DCuboid,
+  CUBOID_EDGES,
+  createHumanSkeleton,
+  SKELETON_BONES,
+  SKELETON_KEYPOINT_NAMES,
+  insertVertexAtClosestEdge,
+  extractMagicWandPolygon
 } from '../utils/geometry';
 
 interface CanvasProps {
@@ -28,6 +35,10 @@ interface CanvasProps {
   onDeleteAnnotation: (id: string) => void;
   onMergeAnnotations?: (ids: string[]) => void;
   onPropagateToNext?: () => void;
+  onCloneFromPrevious?: () => void;
+  onSelectTool?: (tool: ToolType) => void;
+  onFitScreen?: () => void;
+  onOpenAIModal?: () => void;
 }
 
 // Generate distinct deterministic color for instance-based coloring
@@ -56,6 +67,10 @@ export const Canvas: React.FC<CanvasProps> = ({
   onDeleteAnnotation,
   onMergeAnnotations,
   onPropagateToNext,
+  onCloneFromPrevious,
+  onSelectTool,
+  onFitScreen,
+  onOpenAIModal,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -146,18 +161,56 @@ export const Canvas: React.FC<CanvasProps> = ({
         }));
       }
 
-      // Merge (M)
-      if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.metaKey) {
+      // 1. Add Node / Vertex (A)
+      if ((e.key === 'a' || e.key === 'A') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        if (effectiveSelectedIds[0] && drawingState.cursorPoint && image) {
+          const ann = image.annotations.find((a) => a.id === effectiveSelectedIds[0]);
+          if (ann && (ann.type === 'polygon' || ann.type === 'polyline' || ann.type === 'skeleton' || ann.type === 'brush')) {
+            e.preventDefault();
+            const updatedPts = insertVertexAtClosestEdge(ann.points, drawingState.cursorPoint);
+            onUpdateAnnotation({ ...ann, points: updatedPts });
+            return;
+          }
+        }
+        onSelectTool?.('polygon');
+      }
+
+      // 2. Clone / Paste from Previous Image (Shift+A or Shift+D)
+      if (((e.key === 'a' || e.key === 'A' || e.key === 'd' || e.key === 'D') && e.shiftKey) && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        if (onCloneFromPrevious) onCloneFromPrevious();
+        else onPropagateToNext?.();
+        return;
+      }
+
+      // 3. Merge (M)
+      if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
         if (effectiveSelectedIds.length >= 2 && onMergeAnnotations) {
           e.preventDefault();
           onMergeAnnotations(effectiveSelectedIds);
+          return;
         }
       }
 
-      // Propagate to Next Image (Shift+D)
-      if ((e.key === 'd' || e.key === 'D') && e.shiftKey) {
-        e.preventDefault();
-        onPropagateToNext?.();
+      // 4. Quick Tool Selection Shortcuts (when not holding Ctrl/Alt)
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        const key = e.key.toLowerCase();
+        if (key === 'v') { e.preventDefault(); onSelectTool?.('select'); }
+        else if (key === 'b') { e.preventDefault(); onSelectTool?.('bbox'); }
+        else if (key === 'p') { e.preventDefault(); onSelectTool?.('polygon'); }
+        else if (key === 'l') { e.preventDefault(); onSelectTool?.('polyline'); }
+        else if (key === 'k') { e.preventDefault(); onSelectTool?.('keypoint'); }
+        else if (key === 'c') { e.preventDefault(); onSelectTool?.('circle'); }
+        else if (key === '3' || key === 'u') { e.preventDefault(); onSelectTool?.('cuboid3d'); }
+        else if (key === 's') { e.preventDefault(); onSelectTool?.('skeleton'); }
+        else if (key === 'w') { e.preventDefault(); onSelectTool?.('magic_wand'); }
+        else if (key === 'e') { e.preventDefault(); onSelectTool?.('brush'); }
+        else if (key === 't') { e.preventDefault(); onSelectTool?.('tag'); }
+        else if (key === 'z') { e.preventDefault(); onSelectTool?.('zoom'); }
+        else if (key === 'r') { e.preventDefault(); onSelectTool?.('rotate'); }
+        else if (key === 'h') { e.preventDefault(); onSelectTool?.('pan'); }
+        else if (key === 'f') { e.preventDefault(); onFitScreen?.(); }
+        else if (key === 'i') { e.preventDefault(); onOpenAIModal?.(); }
       }
 
       if (e.key === 'Enter' && drawingState.isDrawing) {
@@ -409,8 +462,8 @@ export const Canvas: React.FC<CanvasProps> = ({
       return;
     }
 
-    // 6. KEYPOINT TOOL / SKELETON
-    if (activeTool === 'keypoint' || activeTool === 'skeleton') {
+    // 6. KEYPOINT TOOL
+    if (activeTool === 'keypoint') {
       const newAnn: Annotation = {
         id: `ann_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
         classId: activeClassId,
@@ -421,6 +474,63 @@ export const Canvas: React.FC<CanvasProps> = ({
         createdAt: Date.now(),
       };
       onAddAnnotation(newAnn);
+      return;
+    }
+
+    // 7. HUMAN SKELETON TOOL (17 Anatomical Landmarks)
+    if (activeTool === 'skeleton') {
+      const skeletonPts = createHumanSkeleton(imgCoord, 180);
+      const newAnn: Annotation = {
+        id: `ann_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        classId: activeClassId,
+        type: 'skeleton',
+        points: skeletonPts,
+        visible: true,
+        locked: false,
+        createdAt: Date.now(),
+      };
+      onAddAnnotation(newAnn);
+      return;
+    }
+
+    // 8. MAGIC WAND (Flood Fill & Auto-Contour)
+    if (activeTool === 'magic_wand') {
+      const imgElem = imageElementRef.current;
+      if (imgElem && imgElem.complete && imgElem.naturalWidth > 0) {
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = image.width || imgElem.naturalWidth;
+        offCanvas.height = image.height || imgElem.naturalHeight;
+        const offCtx = offCanvas.getContext('2d');
+        if (offCtx) {
+          offCtx.drawImage(imgElem, 0, 0, offCanvas.width, offCanvas.height);
+          const imgData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height);
+          const contourPts = extractMagicWandPolygon(imgData, imgCoord.x, imgCoord.y, 35);
+          if (contourPts.length >= 3) {
+            const newAnn: Annotation = {
+              id: `ann_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+              classId: activeClassId,
+              type: 'polygon',
+              points: contourPts,
+              visible: true,
+              locked: false,
+              createdAt: Date.now(),
+            };
+            onAddAnnotation(newAnn);
+          }
+        }
+      }
+      return;
+    }
+
+    // 9. BRUSH TOOL (Continuous Stroke Painting)
+    if (activeTool === 'brush') {
+      setDrawingState((prev) => ({
+        ...prev,
+        isDrawing: true,
+        startPoint: imgCoord,
+        cursorPoint: imgCoord,
+        currentPoints: [imgCoord],
+      }));
       return;
     }
   };
@@ -439,6 +549,15 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (!imgCoord || !image) return;
 
     setDrawingState((prev) => ({ ...prev, cursorPoint: imgCoord }));
+
+    // Continuous brush stroke accumulation
+    if (activeTool === 'brush' && drawingState.isDrawing) {
+      setDrawingState((prev) => ({
+        ...prev,
+        currentPoints: [...prev.currentPoints, imgCoord],
+      }));
+      return;
+    }
 
     const threshold = 10 / transform.scale;
 
@@ -501,8 +620,38 @@ export const Canvas: React.FC<CanvasProps> = ({
       return;
     }
 
+    // Finish 3D Cuboid
+    if (drawingState.isDrawing && activeTool === 'cuboid3d' && drawingState.startPoint && drawingState.cursorPoint) {
+      const p1 = drawingState.startPoint;
+      const p2 = drawingState.cursorPoint;
+      const w = Math.abs(p2.x - p1.x);
+      const h = Math.abs(p2.y - p1.y);
+
+      if (w > 6 && h > 6) {
+        const cuboidPts = create3DCuboid(p1, p2);
+        const newAnn: Annotation = {
+          id: `ann_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+          classId: activeClassId,
+          type: 'cuboid3d',
+          points: cuboidPts,
+          visible: true,
+          locked: false,
+          createdAt: Date.now(),
+        };
+        onAddAnnotation(newAnn);
+      }
+
+      setDrawingState((prev) => ({
+        ...prev,
+        isDrawing: false,
+        startPoint: null,
+        currentPoints: [],
+      }));
+      return;
+    }
+
     // Finish BBox
-    if (drawingState.isDrawing && (activeTool === 'bbox' || activeTool === 'cuboid3d') && drawingState.startPoint && drawingState.cursorPoint) {
+    if (drawingState.isDrawing && activeTool === 'bbox' && drawingState.startPoint && drawingState.cursorPoint) {
       const p1 = drawingState.startPoint;
       const p2 = drawingState.cursorPoint;
       const w = Math.abs(p2.x - p1.x);
@@ -517,6 +666,31 @@ export const Canvas: React.FC<CanvasProps> = ({
             { x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y) },
             { x: Math.max(p1.x, p2.x), y: Math.max(p1.y, p2.y) },
           ],
+          visible: true,
+          locked: false,
+          createdAt: Date.now(),
+        };
+        onAddAnnotation(newAnn);
+      }
+
+      setDrawingState((prev) => ({
+        ...prev,
+        isDrawing: false,
+        startPoint: null,
+        currentPoints: [],
+      }));
+      return;
+    }
+
+    // Finish Brush
+    if (drawingState.isDrawing && activeTool === 'brush' && drawingState.currentPoints.length > 2) {
+      const hullPts = computeConvexHull(drawingState.currentPoints);
+      if (hullPts.length >= 3) {
+        const newAnn: Annotation = {
+          id: `ann_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+          classId: activeClassId,
+          type: 'brush',
+          points: hullPts,
           visible: true,
           locked: false,
           createdAt: Date.now(),
@@ -855,7 +1029,89 @@ function drawAnnotation(
     }
   }
 
-  // 3. KEYPOINT
+  // 3. 3D ISOMETRIC CUBOID
+  if (ann.type === 'cuboid3d' && ann.points.length >= 8) {
+    const pts = ann.points;
+    // Front face (0, 1, 2, 3)
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    ctx.lineTo(pts[1].x, pts[1].y);
+    ctx.lineTo(pts[2].x, pts[2].y);
+    ctx.lineTo(pts[3].x, pts[3].y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Back face (4, 5, 6, 7) - dashed
+    ctx.save();
+    ctx.setLineDash([4 / scale, 4 / scale]);
+    ctx.beginPath();
+    ctx.moveTo(pts[4].x, pts[4].y);
+    ctx.lineTo(pts[5].x, pts[5].y);
+    ctx.lineTo(pts[6].x, pts[6].y);
+    ctx.lineTo(pts[7].x, pts[7].y);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Depth connecting edges
+    CUBOID_EDGES.slice(8).forEach(([i, j]) => {
+      ctx.beginPath();
+      ctx.moveTo(pts[i].x, pts[i].y);
+      ctx.lineTo(pts[j].x, pts[j].y);
+      ctx.stroke();
+    });
+    ctx.restore();
+
+    // 8 Draggable Corner Handles
+    pts.forEach((p, idx) => {
+      const isHovered = hoveredVertex?.annId === ann.id && hoveredVertex?.vertexIndex === idx;
+      ctx.fillStyle = idx < 4 ? '#ffffff' : '#38bdf8';
+      ctx.strokeStyle = isHovered ? '#10b981' : color;
+      ctx.lineWidth = 2 / scale;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, (isHovered ? 6.5 : (isSelected ? 5 : 3.5)) / scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+  }
+
+  // 4. HUMAN ANATOMICAL SKELETON (17 Landmarks & Bones)
+  if (ann.type === 'skeleton' && ann.points.length >= 17) {
+    const pts = ann.points;
+
+    // Draw Bones
+    ctx.save();
+    ctx.lineWidth = (strokeWidth * 1.5);
+    SKELETON_BONES.forEach(([i, j], boneIdx) => {
+      if (pts[i] && pts[j]) {
+        // Anatomical bone coloring (Limbs left: Amber, Limbs right: Cyan, Spine/Head: Emerald)
+        let boneColor = '#10b981';
+        if ([5, 7, 11, 13].includes(i)) boneColor = '#f59e0b';
+        else if ([6, 8, 12, 14].includes(i)) boneColor = '#06b6d4';
+
+        ctx.strokeStyle = isSelected ? color : boneColor;
+        ctx.beginPath();
+        ctx.moveTo(pts[i].x, pts[i].y);
+        ctx.lineTo(pts[j].x, pts[j].y);
+        ctx.stroke();
+      }
+    });
+    ctx.restore();
+
+    // Draw 17 Joint Handles
+    pts.forEach((p, idx) => {
+      const isHovered = hoveredVertex?.annId === ann.id && hoveredVertex?.vertexIndex === idx;
+      ctx.fillStyle = isHovered ? '#ffffff' : (idx === 0 ? '#ef4444' : color);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5 / scale;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, (isHovered ? 7 : (isSelected ? 5.5 : 4)) / scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+  }
+
+  // 5. KEYPOINT
   if (ann.type === 'keypoint' && ann.points.length > 0) {
     const p = ann.points[0];
     const isHovered = hoveredVertex?.annId === ann.id;
@@ -870,7 +1126,7 @@ function drawAnnotation(
     ctx.stroke();
   }
 
-  // 4. POLYLINE
+  // 6. POLYLINE
   if (ann.type === 'polyline' && ann.points.length >= 2) {
     ctx.beginPath();
     ctx.moveTo(ann.points[0].x, ann.points[0].y);
@@ -880,7 +1136,19 @@ function drawAnnotation(
     ctx.stroke();
   }
 
-  // 5. CIRCLE
+  // 7. BRUSH MASK / CONTINUOUS CONTOUR
+  if (ann.type === 'brush' && ann.points.length >= 3) {
+    ctx.beginPath();
+    ctx.moveTo(ann.points[0].x, ann.points[0].y);
+    for (let i = 1; i < ann.points.length; i++) {
+      ctx.lineTo(ann.points[i].x, ann.points[i].y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // 8. CIRCLE
   if (ann.type === 'circle' && ann.points.length >= 2) {
     const center = ann.points[0];
     const r = distance(ann.points[0], ann.points[1]);
@@ -890,7 +1158,7 @@ function drawAnnotation(
     if (filters.outlinedBorders !== false) ctx.stroke();
   }
 
-  // 6. LABEL BADGE
+  // 9. LABEL BADGE
   if (filters.showLabels) {
     const box = getBoundingBox(ann.points, ann.type);
     drawLabelBadge(ctx, cls.name, box.x, box.y, color, scale);
@@ -941,7 +1209,33 @@ function drawInProgressShape(
   ctx.lineWidth = 2 / scale;
   ctx.setLineDash([4 / scale, 4 / scale]);
 
-  if ((tool === 'bbox' || tool === 'cuboid3d') && state.startPoint && state.cursorPoint) {
+  if (tool === 'cuboid3d' && state.startPoint && state.cursorPoint) {
+    const cuboidPts = create3DCuboid(state.startPoint, state.cursorPoint);
+    // Front face
+    ctx.beginPath();
+    ctx.moveTo(cuboidPts[0].x, cuboidPts[0].y);
+    ctx.lineTo(cuboidPts[1].x, cuboidPts[1].y);
+    ctx.lineTo(cuboidPts[2].x, cuboidPts[2].y);
+    ctx.lineTo(cuboidPts[3].x, cuboidPts[3].y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // Back face
+    ctx.beginPath();
+    ctx.moveTo(cuboidPts[4].x, cuboidPts[4].y);
+    ctx.lineTo(cuboidPts[5].x, cuboidPts[5].y);
+    ctx.lineTo(cuboidPts[6].x, cuboidPts[6].y);
+    ctx.lineTo(cuboidPts[7].x, cuboidPts[7].y);
+    ctx.closePath();
+    ctx.stroke();
+    // Connecting edges
+    CUBOID_EDGES.slice(8).forEach(([i, j]) => {
+      ctx.beginPath();
+      ctx.moveTo(cuboidPts[i].x, cuboidPts[i].y);
+      ctx.lineTo(cuboidPts[j].x, cuboidPts[j].y);
+      ctx.stroke();
+    });
+  } else if (tool === 'bbox' && state.startPoint && state.cursorPoint) {
     const x = Math.min(state.startPoint.x, state.cursorPoint.x);
     const y = Math.min(state.startPoint.y, state.cursorPoint.y);
     const w = Math.abs(state.cursorPoint.x - state.startPoint.x);
@@ -954,6 +1248,13 @@ function drawInProgressShape(
     ctx.arc(state.startPoint.x, state.startPoint.y, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+  } else if (tool === 'brush' && state.currentPoints.length > 0) {
+    ctx.fillStyle = `${color}60`;
+    state.currentPoints.forEach((pt) => {
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 14 / scale, 0, Math.PI * 2);
+      ctx.fill();
+    });
   } else if ((tool === 'polygon' || tool === 'polyline') && state.currentPoints.length > 0) {
     ctx.beginPath();
     ctx.moveTo(state.currentPoints[0].x, state.currentPoints[0].y);

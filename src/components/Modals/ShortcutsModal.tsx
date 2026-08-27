@@ -11,36 +11,44 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({ isOpen, onClose 
 
   const shortcutGroups = [
     {
-      title: 'Ferramentas de Anotação',
+      title: 'Ferramentas de Anotação & Formas',
       shortcuts: [
-        { key: 'V', desc: 'Ferramenta de Seleção / Edição de Vértices' },
-        { key: 'P', desc: 'Polígono / Segmentação por Pontos' },
-        { key: 'B', desc: 'Bounding Box (Caixa delimitadora)' },
-        { key: 'L', desc: 'Polyline (Traçado linear)' },
-        { key: 'K', desc: 'Keypoint (Ponto de referência)' },
-        { key: 'C', desc: 'Círculo / Elipse' },
+        { key: 'V', desc: 'Selecionar / Editar Vértices e Formas' },
+        { key: 'B', desc: 'Bounding Box 2D (Caixa Delimitadora)' },
+        { key: 'P', desc: 'Polígono / Segmentação Fina por Pontos' },
+        { key: '3 ou U', desc: 'Cubóide 3D (Caixa Isométrica Orientada)' },
+        { key: 'S', desc: 'Esqueleto Anatômico (17 Keypoints com Ossos)' },
+        { key: 'W', desc: 'Varinha Mágica (Auto-Segmentação por Flood Fill)' },
+        { key: 'E', desc: 'Pincel de Máscara (Pintura Contínua de Contorno)' },
+        { key: 'L', desc: 'Polyline (Traçado Linear Aberto)' },
+        { key: 'K', desc: 'Keypoint (Ponto ou Landmark)' },
+        { key: 'C', desc: 'Círculo / Elipse Delimitadora' },
+        { key: 'T', desc: 'Tag / Classificação de Imagem' },
         { key: 'H ou Espaço', desc: 'Mover Canvas (Pan)' },
       ],
     },
     {
-      title: 'Ações e Edição',
+      title: 'Edição Rápida de Nodos & Clonagem',
       shortcuts: [
-        { key: 'Enter', desc: 'Fechar Polígono / Finalizar Polyline' },
+        { key: 'A', desc: 'Adicionar Novo Nodo / Vértice na posição do cursor' },
+        { key: 'Shift + A / Shift + D', desc: 'Clonar todas anotações da imagem anterior' },
+        { key: 'M', desc: 'Mesclar Anotações Selecionadas (Merge)' },
+        { key: 'Enter', desc: 'Fechar Polígono / Finalizar Desenho' },
         { key: 'Esc', desc: 'Cancelar anotação em andamento / Desmarcar' },
         { key: 'Del / Backspace', desc: 'Excluir anotação ou vértice selecionado' },
-        { key: 'Ctrl + Z', desc: 'Desfazer última alteração' },
-        { key: 'Ctrl + Y', desc: 'Refazer última alteração' },
-        { key: 'Alt + C', desc: 'Gerar Envoltória Convexa (Convex Hull) dos pontos' },
-        { key: 'Clique na aresta', desc: 'Inserir novo vértice no polígono (Modo V)' },
+        { key: 'Ctrl + C / Ctrl + V', desc: 'Copiar e Colar Anotações' },
+        { key: 'Ctrl + Z / Ctrl + Y', desc: 'Desfazer / Refazer' },
+        { key: 'Alt + C', desc: 'Gerar Envoltória Convexa (Convex Hull)' },
       ],
     },
     {
-      title: 'Navegação e Classes',
+      title: 'Inteligência Artificial & Automação',
       shortcuts: [
+        { key: 'I ou Ctrl + I', desc: 'Executar Auto IA com o modelo padrão' },
+        { key: 'Shift + W', desc: 'Abrir Estúdio de Data Augmentation' },
+        { key: 'F', desc: 'Ajustar Imagem à Tela (Fit Screen)' },
         { key: '1 a 9', desc: 'Selecionar Classe de Label ativa' },
         { key: 'Scroll do Mouse', desc: 'Zoom no ponto do cursor' },
-        { key: 'F', desc: 'Ajustar Imagem à Tela (Fit Screen)' },
-        { key: 'Espaço + Arrastar', desc: 'Arrastar/Pan da imagem livremente' },
       ],
     },
   ];
@@ -55,8 +63,8 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({ isOpen, onClose 
               <Keyboard className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-slate-100">Atalhos de Teclado e Gestos</h2>
-              <p className="text-xs text-slate-400">Maximize sua velocidade de anotação e produtividade</p>
+              <h2 className="text-base font-semibold text-slate-100">Atalhos de Teclado e Produtividade</h2>
+              <p className="text-xs text-slate-400">Todas as ferramentas e automações com atalhos dedicados</p>
             </div>
           </div>
           <button
@@ -68,7 +76,7 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({ isOpen, onClose 
         </div>
 
         {/* Content */}
-        <div className="p-6 flex-1 overflow-y-auto flex flex-col gap-5">
+        <div className="p-6 flex-1 overflow-y-auto flex flex-col gap-5 scrollbar-thin">
           {shortcutGroups.map((group) => (
             <div key={group.title} className="flex flex-col gap-2">
               <h3 className="text-xs font-semibold text-blue-400 uppercase tracking-wider">

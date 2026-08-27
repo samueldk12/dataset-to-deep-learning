@@ -16,6 +16,9 @@ import { VideoImportModal } from './components/Modals/VideoImportModal';
 import { NewDatasetModal } from './components/Modals/NewDatasetModal';
 import { AIAnnotationModal } from './components/Modals/AIAnnotationModal';
 import { AugmentationModal } from './components/Modals/AugmentationModal';
+import { SidebarActionFooter } from './components/Sidebar/SidebarActionFooter';
+import { predictImageWithAI } from './utils/aiClient';
+import { AIModelType } from './types/aiModel';
 
 // Specialized Workspaces
 import { NLPWorkspace } from './components/Workspaces/NLPWorkspace';
@@ -100,6 +103,9 @@ export const App: React.FC = () => {
   const [isVideoStudioOpen, setIsVideoStudioOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isAugmentationModalOpen, setIsAugmentationModalOpen] = useState(false);
+  const [defaultAIModelId, setDefaultAIModelId] = useState<AIModelType>(() => {
+    return (localStorage.getItem('annotatex_default_ai_model') as AIModelType) || 'yolov11n';
+  });
 
   const quickFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -521,6 +527,116 @@ export const App: React.FC = () => {
     }));
   };
 
+  /* Clone / Copy Annotations from Previous Image */
+  const handleCloneFromPrevious = () => {
+    if (!activeImage) return;
+    const currentIndex = currentProject.images.findIndex((img) => img.id === activeImage.id);
+    if (currentIndex <= 0) return;
+    const prevImage = currentProject.images[currentIndex - 1];
+    if (!prevImage || !prevImage.annotations.length) return;
+
+    const clonedAnns = prevImage.annotations.map((ann) => ({
+      ...ann,
+      id: `ann_cloned_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      createdAt: Date.now(),
+    }));
+
+    updateProject((prev) => ({
+      ...prev,
+      images: prev.images.map((img) =>
+        img.id === activeImage.id
+          ? { ...img, annotations: [...img.annotations, ...clonedAnns], status: 'completed' as const }
+          : img
+      ),
+    }));
+
+    setSelectedAnnotationIds(clonedAnns.map((a) => a.id));
+    setSelectedAnnotationId(clonedAnns[0]?.id || null);
+  };
+
+  /* Run Remembered Default AI Model on Active Image */
+  const handleRunDefaultAI = async () => {
+    if (!activeImage) return;
+    try {
+      const res = await predictImageWithAI(
+        activeImage,
+        {
+          modelId: defaultAIModelId,
+          confidenceThreshold: 0.25,
+          iouThreshold: 0.45,
+          autoAddNewClasses: true,
+          overwriteExisting: false,
+        },
+        currentProject.classes
+      );
+      handleApplyAnnotations(activeImage.id, res.annotations, res.newClasses, false);
+    } catch (e) {
+      console.error('Failed to run default AI inference:', e);
+    }
+  };
+
+  /* Batch Gallery Handlers */
+  const handleDeleteSelectedImages = (ids: string[]) => {
+    updateProject((prev) => ({
+      ...prev,
+      images: prev.images.filter((img) => !ids.includes(img.id)),
+      activeImageId: ids.includes(prev.activeImageId || '')
+        ? prev.images.find((img) => !ids.includes(img.id))?.id || null
+        : prev.activeImageId,
+    }));
+  };
+
+  const handleRunAIOnSelected = async (ids: string[]) => {
+    const targetImages = currentProject.images.filter((img) => ids.includes(img.id));
+    const results: Array<{ imageId: string; annotations: Annotation[] }> = [];
+    let currentClasses = [...currentProject.classes];
+    const newClassesOverall: DatasetClass[] = [];
+
+    for (const img of targetImages) {
+      const res = await predictImageWithAI(
+        img,
+        {
+          modelId: defaultAIModelId,
+          confidenceThreshold: 0.25,
+          iouThreshold: 0.45,
+          autoAddNewClasses: true,
+          overwriteExisting: false,
+        },
+        currentClasses
+      );
+      results.push({ imageId: img.id, annotations: res.annotations });
+      if (res.newClasses.length > 0) {
+        currentClasses = [...currentClasses, ...res.newClasses];
+        newClassesOverall.push(...res.newClasses);
+      }
+    }
+
+    handleBatchApplyAnnotations(results, newClassesOverall);
+  };
+
+  const handlePasteToSelected = (ids: string[]) => {
+    if (!activeImage || !activeImage.annotations.length) return;
+    const templateAnns = activeImage.annotations;
+    updateProject((prev) => ({
+      ...prev,
+      images: prev.images.map((img) => {
+        if (ids.includes(img.id) && img.id !== activeImage.id) {
+          const freshAnns = templateAnns.map((ann) => ({
+            ...ann,
+            id: `ann_batch_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+            createdAt: Date.now(),
+          }));
+          return {
+            ...img,
+            annotations: [...img.annotations, ...freshAnns],
+            status: 'completed' as const,
+          };
+        }
+        return img;
+      }),
+    }));
+  };
+
   const annotationCountByClass = new Map<string, number>();
   (currentProject.images || []).forEach((img) => {
     img.annotations.forEach((ann) => {
@@ -664,6 +780,10 @@ export const App: React.FC = () => {
                 onDeleteAnnotation={handleDeleteAnnotation}
                 onMergeAnnotations={handleMergeAnnotations}
                 onPropagateToNext={handlePropagateToNext}
+                onCloneFromPrevious={handleCloneFromPrevious}
+                onSelectTool={setActiveTool}
+                onFitScreen={() => setTransform({ scale: 0.95, offsetX: 0, offsetY: 0 })}
+                onOpenAIModal={() => setIsAIModalOpen(true)}
                 transform={transform}
                 onTransformChange={setTransform}
                 filters={filters}
@@ -680,7 +800,7 @@ export const App: React.FC = () => {
                 onMergeSelected={handleMergeAnnotations}
               />
 
-              {/* Bottom Image Filmstrip */}
+              {/* Bottom Image Filmstrip with Multi-Select */}
               <ImageStrip
                 images={currentProject.images || []}
                 activeImageId={currentProject.activeImageId}
@@ -692,6 +812,9 @@ export const App: React.FC = () => {
                     images: prev.images.filter((img) => img.id !== id),
                   }));
                 }}
+                onDeleteSelectedImages={handleDeleteSelectedImages}
+                onRunAIOnSelected={handleRunAIOnSelected}
+                onPasteToSelected={handlePasteToSelected}
               />
             </div>
 
@@ -788,6 +911,20 @@ export const App: React.FC = () => {
                   <DatasetStats project={currentProject} onClose={() => setSidebarTab('classes')} />
                 )}
               </div>
+
+              {/* Bottom Actions Footer inside Sidebar (Under Classes / Annotations / Stats) */}
+              <SidebarActionFooter
+                currentModelId={defaultAIModelId}
+                onRunDefaultAI={handleRunDefaultAI}
+                onOpenAIConfigModal={() => setIsAIModalOpen(true)}
+                onOpenAugmentationModal={() => setIsAugmentationModalOpen(true)}
+                onAutoClassify={handleAutoClassify}
+                onCloneFromPrevious={handleCloneFromPrevious}
+                onFitScreen={() => setTransform({ scale: 0.95, offsetX: 0, offsetY: 0 })}
+                onOpenAddImages={() => quickFileInputRef.current?.click()}
+                onOpenVideoStudio={() => setIsVideoStudioOpen(true)}
+                onOpenExportModal={() => setIsExportOpen(true)}
+              />
             </div>
           </div>
         )}
@@ -837,6 +974,8 @@ export const App: React.FC = () => {
         onClose={() => setIsAIModalOpen(false)}
         project={currentProject}
         activeImage={activeImage}
+        defaultModelId={defaultAIModelId}
+        onModelChange={(id) => setDefaultAIModelId(id)}
         onApplyAnnotations={handleApplyAnnotations}
         onBatchApplyAnnotations={handleBatchApplyAnnotations}
       />

@@ -3,7 +3,16 @@ export interface Point {
   y: number;
 }
 
-export type AnnotationType = 'bbox' | 'polygon' | 'keypoint' | 'polyline' | 'circle';
+export type AnnotationType = 
+  | 'bbox' 
+  | 'polygon' 
+  | 'keypoint' 
+  | 'polyline' 
+  | 'circle' 
+  | 'cuboid3d' 
+  | 'skeleton' 
+  | 'brush' 
+  | 'tag';
 
 export interface Annotation {
   id: string;

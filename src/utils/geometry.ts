@@ -141,6 +141,32 @@ export function isPointInsideAnnotation(p: Point, ann: Annotation, tolerance = 8
     return distance(p, ann.points[0]) <= tolerance * 1.5;
   }
 
+  if (ann.type === 'skeleton') {
+    for (const pt of ann.points) {
+      if (distance(p, pt) <= tolerance * 1.5) return true;
+    }
+    for (const [i, j] of SKELETON_BONES) {
+      if (ann.points[i] && ann.points[j]) {
+        const seg = distanceToSegment(p, ann.points[i], ann.points[j]);
+        if (seg.dist <= tolerance) return true;
+      }
+    }
+    return false;
+  }
+
+  if (ann.type === 'cuboid3d' && ann.points.length >= 8) {
+    for (const [i, j] of CUBOID_EDGES) {
+      if (ann.points[i] && ann.points[j]) {
+        const seg = distanceToSegment(p, ann.points[i], ann.points[j]);
+        if (seg.dist <= tolerance) return true;
+      }
+    }
+    // Check if inside front face
+    const frontFace = ann.points.slice(0, 4);
+    if (isPointInPolygon(p, frontFace)) return true;
+    return false;
+  }
+
   if (ann.type === 'circle' && ann.points.length >= 2) {
     const r = distance(ann.points[0], ann.points[1]);
     const distToCenter = distance(p, ann.points[0]);
@@ -165,7 +191,7 @@ export function isPointInsideAnnotation(p: Point, ann: Annotation, tolerance = 8
     return false;
   }
 
-  if (ann.type === 'polygon') {
+  if (ann.type === 'polygon' || ann.type === 'brush') {
     if (isPointInPolygon(p, ann.points)) return true;
     for (let i = 0; i < ann.points.length; i++) {
       const next = ann.points[(i + 1) % ann.points.length];
@@ -341,5 +367,240 @@ export function mergeAnnotations(
     locked: false,
     createdAt: Date.now(),
   };
+}
+
+/* ==========================================================================
+   3D CUBOID ISOMETRIC ENGINE
+   ========================================================================== */
+
+export const CUBOID_EDGES = [
+  // Front face (0, 1, 2, 3)
+  [0, 1], [1, 2], [2, 3], [3, 0],
+  // Back face (4, 5, 6, 7)
+  [4, 5], [5, 6], [6, 7], [7, 4],
+  // Connecting depth lines
+  [0, 4], [1, 5], [2, 6], [3, 7]
+];
+
+export function create3DCuboid(p1: Point, p2: Point, depthRatio = 0.25): Point[] {
+  const minX = Math.min(p1.x, p2.x);
+  const maxX = Math.max(p1.x, p2.x);
+  const minY = Math.min(p1.y, p2.y);
+  const maxY = Math.max(p1.y, p2.y);
+
+  const width = Math.max(10, maxX - minX);
+  const height = Math.max(10, maxY - minY);
+  const depthX = width * depthRatio;
+  const depthY = height * depthRatio;
+
+  // Front face: [Top-Left, Top-Right, Bottom-Right, Bottom-Left]
+  const f0: Point = { x: minX, y: minY };
+  const f1: Point = { x: maxX, y: minY };
+  const f2: Point = { x: maxX, y: maxY };
+  const f3: Point = { x: minX, y: maxY };
+
+  // Back face (offset in isometric perspective top-right)
+  const b0: Point = { x: minX + depthX, y: minY - depthY };
+  const b1: Point = { x: maxX + depthX, y: minY - depthY };
+  const b2: Point = { x: maxX + depthX, y: maxY - depthY };
+  const b3: Point = { x: minX + depthX, y: maxY - depthY };
+
+  return [f0, f1, f2, f3, b0, b1, b2, b3];
+}
+
+/* ==========================================================================
+   HUMAN ANATOMICAL SKELETON ENGINE (17 Keypoints + Bones Topology)
+   ========================================================================== */
+
+export const SKELETON_KEYPOINT_NAMES = [
+  'nariz', 'olho_esq', 'olho_dir', 'orelha_esq', 'orelha_dir',
+  'ombro_esq', 'ombro_dir', 'cotovelo_esq', 'cotovelo_dir', 'pulso_esq', 'pulso_dir',
+  'quadril_esq', 'quadril_dir', 'joelho_esq', 'joelho_dir', 'tornozelo_esq', 'tornozelo_dir'
+];
+
+export const SKELETON_BONES = [
+  // Head
+  [0, 1], [0, 2], [1, 3], [2, 4],
+  // Upper body
+  [5, 6], [5, 7], [7, 9], [6, 8], [8, 10],
+  // Torso / Spine
+  [5, 11], [6, 12], [11, 12],
+  // Lower body
+  [11, 13], [13, 15], [12, 14], [14, 16]
+];
+
+export function createHumanSkeleton(center: Point, totalHeight = 180): Point[] {
+  const headY = center.y - totalHeight * 0.45;
+  const eyeOffset = totalHeight * 0.04;
+  const earOffset = totalHeight * 0.08;
+  const shoulderY = center.y - totalHeight * 0.28;
+  const shoulderX = totalHeight * 0.16;
+  const elbowY = center.y - totalHeight * 0.12;
+  const elbowX = totalHeight * 0.22;
+  const wristY = center.y + totalHeight * 0.04;
+  const wristX = totalHeight * 0.24;
+
+  const hipY = center.y + totalHeight * 0.05;
+  const hipX = totalHeight * 0.10;
+  const kneeY = center.y + totalHeight * 0.26;
+  const kneeX = totalHeight * 0.12;
+  const ankleY = center.y + totalHeight * 0.48;
+  const ankleX = totalHeight * 0.13;
+
+  return [
+    { x: center.x, y: headY }, // 0: nose
+    { x: center.x - eyeOffset, y: headY - eyeOffset * 0.5 }, // 1: left eye
+    { x: center.x + eyeOffset, y: headY - eyeOffset * 0.5 }, // 2: right eye
+    { x: center.x - earOffset, y: headY }, // 3: left ear
+    { x: center.x + earOffset, y: headY }, // 4: right ear
+
+    { x: center.x - shoulderX, y: shoulderY }, // 5: left shoulder
+    { x: center.x + shoulderX, y: shoulderY }, // 6: right shoulder
+    { x: center.x - elbowX, y: elbowY }, // 7: left elbow
+    { x: center.x + elbowX, y: elbowY }, // 8: right elbow
+    { x: center.x - wristX, y: wristY }, // 9: left wrist
+    { x: center.x + wristX, y: wristY }, // 10: right wrist
+
+    { x: center.x - hipX, y: hipY }, // 11: left hip
+    { x: center.x + hipX, y: hipY }, // 12: right hip
+    { x: center.x - kneeX, y: kneeY }, // 13: left knee
+    { x: center.x + kneeX, y: kneeY }, // 14: right knee
+    { x: center.x - ankleX, y: ankleY }, // 15: left ankle
+    { x: center.x + ankleX, y: ankleY }, // 16: right ankle
+  ];
+}
+
+/* ==========================================================================
+   NODE / VERTEX INSERTION AT CLOSEST EDGE (KEYBOARD 'A' SHORTCUT)
+   ========================================================================== */
+
+export function insertVertexAtClosestEdge(points: Point[], newPoint: Point): Point[] {
+  if (points.length < 2) return [...points, newPoint];
+
+  let bestIndex = points.length;
+  let minDistance = Infinity;
+
+  for (let i = 0; i < points.length; i++) {
+    const pA = points[i];
+    const pB = points[(i + 1) % points.length];
+    const res = distanceToSegment(newPoint, pA, pB);
+    if (res.dist < minDistance) {
+      minDistance = res.dist;
+      bestIndex = i + 1;
+    }
+  }
+
+  const updated = [...points];
+  updated.splice(bestIndex, 0, newPoint);
+  return updated;
+}
+
+/* ==========================================================================
+   MAGIC WAND FLOOD FILL CONTOUR EXTRACTOR
+   ========================================================================== */
+
+export function extractMagicWandPolygon(
+  imageData: ImageData,
+  startX: number,
+  startY: number,
+  tolerance = 32
+): Point[] {
+  const width = imageData.width;
+  const height = imageData.height;
+  const data = imageData.data;
+
+  const sx = Math.floor(Math.max(0, Math.min(width - 1, startX)));
+  const sy = Math.floor(Math.max(0, Math.min(height - 1, startY)));
+
+  const startIdx = (sy * width + sx) * 4;
+  const targetR = data[startIdx];
+  const targetG = data[startIdx + 1];
+  const targetB = data[startIdx + 2];
+
+  const visited = new Uint8Array(width * height);
+  const queue: number[] = [sx, sy];
+  visited[sy * width + sx] = 1;
+
+  let minX = sx, maxX = sx, minY = sy, maxY = sy;
+  let matchingCount = 0;
+  const maxPixels = width * height * 0.85;
+
+  while (queue.length > 0 && matchingCount < maxPixels) {
+    const cy = queue.pop()!;
+    const cx = queue.pop()!;
+    matchingCount++;
+
+    if (cx < minX) minX = cx;
+    if (cx > maxX) maxX = cx;
+    if (cy < minY) minY = cy;
+    if (cy > maxY) maxY = cy;
+
+    // 4-directional neighbors
+    const neighbors = [
+      [cx + 1, cy], [cx - 1, cy],
+      [cx, cy + 1], [cx, cy - 1]
+    ];
+
+    for (const [nx, ny] of neighbors) {
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+        const nPos = ny * width + nx;
+        if (!visited[nPos]) {
+          visited[nPos] = 1;
+          const idx = nPos * 4;
+          const diff = Math.abs(data[idx] - targetR) +
+                       Math.abs(data[idx + 1] - targetG) +
+                       Math.abs(data[idx + 2] - targetB);
+
+          if (diff <= tolerance * 3) {
+            queue.push(nx, ny);
+          }
+        }
+      }
+    }
+  }
+
+  // If too small, return circle around click point
+  if (matchingCount < 16) {
+    const r = 20;
+    const pts: Point[] = [];
+    for (let i = 0; i < 12; i++) {
+      const rad = (i / 12) * Math.PI * 2;
+      pts.push({ x: sx + Math.cos(rad) * r, y: sy + Math.sin(rad) * r });
+    }
+    return pts;
+  }
+
+  // Extract outer envelope points in radial directions from centroid
+  const centroidX = (minX + maxX) / 2;
+  const centroidY = (minY + maxY) / 2;
+  const numRays = 24;
+  const polygonPoints: Point[] = [];
+
+  for (let i = 0; i < numRays; i++) {
+    const angle = (i / numRays) * Math.PI * 2;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+    const maxRadius = Math.hypot(maxX - minX, maxY - minY);
+
+    let farthestX = centroidX;
+    let farthestY = centroidY;
+
+    for (let r = 1; r < maxRadius; r += 2) {
+      const sampleX = Math.round(centroidX + cosA * r);
+      const sampleY = Math.round(centroidY + sinA * r);
+      if (sampleX >= 0 && sampleX < width && sampleY >= 0 && sampleY < height) {
+        if (visited[sampleY * width + sampleX]) {
+          farthestX = sampleX;
+          farthestY = sampleY;
+        }
+      } else {
+        break;
+      }
+    }
+
+    polygonPoints.push({ x: farthestX, y: farthestY });
+  }
+
+  return polygonPoints;
 }
 

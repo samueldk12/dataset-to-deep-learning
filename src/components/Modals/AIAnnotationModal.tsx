@@ -24,6 +24,8 @@ interface AIAnnotationModalProps {
   onClose: () => void;
   project: DatasetProject;
   activeImage: DatasetImage | null;
+  defaultModelId?: AIModelType;
+  onModelChange?: (id: AIModelType) => void;
   onApplyAnnotations: (
     imageId: string,
     annotations: any[],
@@ -41,15 +43,27 @@ export const AIAnnotationModal: React.FC<AIAnnotationModalProps> = ({
   onClose,
   project,
   activeImage,
+  defaultModelId = 'yolov11n',
+  onModelChange,
   onApplyAnnotations,
   onBatchApplyAnnotations,
 }) => {
   const [models, setModels] = useState<AIModelInfo[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState<AIModelType>('yolov11n');
+  const [selectedModelId, setSelectedModelId] = useState<AIModelType>(defaultModelId);
   const [confidence, setConfidence] = useState(0.25);
   const [iou, setIou] = useState(0.45);
   const [autoAddNewClasses, setAutoAddNewClasses] = useState(true);
   const [overwriteExisting, setOverwriteExisting] = useState(false);
+
+  useEffect(() => {
+    if (defaultModelId) setSelectedModelId(defaultModelId);
+  }, [defaultModelId]);
+
+  const handleSelectModel = (id: AIModelType) => {
+    setSelectedModelId(id);
+    localStorage.setItem('annotatex_default_ai_model', id);
+    onModelChange?.(id);
+  };
 
   const [isLoading, setIsLoading] = useState(false);
   const [isBatchRunning, setIsBatchRunning] = useState(false);
@@ -184,7 +198,7 @@ export const AIAnnotationModal: React.FC<AIAnnotationModalProps> = ({
                 return (
                   <button
                     key={model.id}
-                    onClick={() => setSelectedModelId(model.id)}
+                    onClick={() => handleSelectModel(model.id)}
                     className={`flex flex-col text-left p-3 rounded-xl border transition-all ${
                       isSelected
                         ? 'bg-blue-600/15 border-blue-500 shadow-lg shadow-blue-500/10'
