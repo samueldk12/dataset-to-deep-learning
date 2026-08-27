@@ -27,7 +27,8 @@ import {
   Copy,
   ArrowRightCircle,
   CheckCircle2,
-  GitMerge
+  GitMerge,
+  Cpu
 } from 'lucide-react';
 import { ToolType } from '../types/canvas';
 
@@ -46,6 +47,8 @@ interface ToolbarProps {
   onOpenVideoStudio?: () => void;
   onOpenAddImages?: () => void;
   onOpenShortcuts?: () => void;
+  onOpenAIModal?: () => void;
+  onOpenAugmentationModal?: () => void;
   onAutoClassify?: () => void;
   onCopyAnnotations?: () => void;
   onPasteAnnotations?: () => void;
@@ -69,6 +72,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onOpenVideoStudio,
   onOpenAddImages,
   onOpenShortcuts,
+  onOpenAIModal,
+  onOpenAugmentationModal,
   onAutoClassify,
   onCopyAnnotations,
   onPasteAnnotations,
@@ -243,16 +248,44 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </button>
         )}
 
+        {/* AI Pre-Trained Models Auto-Annotation */}
+        {onOpenAIModal && (
+          <button
+            onClick={onOpenAIModal}
+            className="p-2 rounded-lg bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/30 transition-colors group relative"
+            title="Modelos IA Pré-Treinados & Auto-Anotação (YOLOv11, Seg, Pose)"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span className="absolute left-full ml-2 px-2 py-1 bg-slate-900 border border-slate-700 text-white text-[11px] rounded shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+              Modelos IA Pré-Treinados (YOLOv11/v8)
+            </span>
+          </button>
+        )}
+
+        {/* Data Augmentation Studio */}
+        {onOpenAugmentationModal && (
+          <button
+            onClick={onOpenAugmentationModal}
+            className="p-2 rounded-lg bg-purple-600/20 text-purple-400 hover:bg-purple-600 hover:text-white border border-purple-500/30 transition-colors group relative"
+            title="Estúdio de Data Augmentation (Geometria, Cores, Ruído, Cutout)"
+          >
+            <Wand2 className="w-4 h-4" />
+            <span className="absolute left-full ml-2 px-2 py-1 bg-slate-900 border border-slate-700 text-white text-[11px] rounded shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+              Data Augmentation Studio
+            </span>
+          </button>
+        )}
+
         {/* Auto-Classify Tool */}
         {onAutoClassify && (
           <button
             onClick={onAutoClassify}
-            className="p-2 rounded-lg text-purple-400 hover:bg-slate-800 hover:text-purple-300 transition-colors group relative"
-            title="Auto-Classificar Anotações por Geometria e Tamanho"
+            className="p-2 rounded-lg text-amber-400 hover:bg-slate-800 hover:text-amber-300 transition-colors group relative"
+            title="Auto-Classificar Anotações por Heurística"
           >
-            <Sparkles className="w-4 h-4" />
+            <Cpu className="w-4 h-4" />
             <span className="absolute left-full ml-2 px-2 py-1 bg-slate-900 border border-slate-700 text-white text-[11px] rounded shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
-              Auto-Classificar Anotações
+              Auto-Classificar por Heurística
             </span>
           </button>
         )}

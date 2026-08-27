@@ -8,7 +8,9 @@ import {
   ChevronDown, 
   FolderKanban,
   Check,
-  BookOpen
+  BookOpen,
+  Sparkles,
+  Wand2
 } from 'lucide-react';
 import { DomainCategory, DatasetTaskType, DatasetProject } from '../types/dataset';
 import { TASK_CATALOG, TaskDefinition } from '../utils/taskCatalog';
@@ -21,6 +23,8 @@ interface HeaderProps {
   onSelectProject: (id: string) => void;
   onOpenNewDatasetModal: (domain?: DomainCategory, taskType?: DatasetTaskType) => void;
   onUpdateProjectName: (name: string) => void;
+  onOpenAIModal?: () => void;
+  onOpenAugmentationModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -31,6 +35,8 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectProject,
   onOpenNewDatasetModal,
   onUpdateProjectName,
+  onOpenAIModal,
+  onOpenAugmentationModal,
 }) => {
   const [hoveredDomain, setHoveredDomain] = useState<DomainCategory | null>(null);
   const [hoveredTaskPreview, setHoveredTaskPreview] = useState<TaskDefinition | null>(null);
@@ -426,6 +432,28 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* 3. Right: Clean action */}
       <div className="flex items-center gap-2">
+        {onOpenAugmentationModal && (
+          <button
+            onClick={onOpenAugmentationModal}
+            title="Estúdio de Data Augmentation (Geometria, Cores, Ruído, Cutout)"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs font-medium transition-colors"
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Augmentation</span>
+          </button>
+        )}
+
+        {onOpenAIModal && (
+          <button
+            onClick={onOpenAIModal}
+            title="Modelos IA Pré-Treinados & Auto-Anotação (YOLOv11, Seg, Pose)"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-medium transition-colors"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Auto IA</span>
+          </button>
+        )}
+
         <button
           onClick={() => onOpenNewDatasetModal()}
           className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors"

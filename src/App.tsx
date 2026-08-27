@@ -14,6 +14,8 @@ import { ShortcutsModal } from './components/Modals/ShortcutsModal';
 import { LabelMapModal } from './components/Modals/LabelMapModal';
 import { VideoImportModal } from './components/Modals/VideoImportModal';
 import { NewDatasetModal } from './components/Modals/NewDatasetModal';
+import { AIAnnotationModal } from './components/Modals/AIAnnotationModal';
+import { AugmentationModal } from './components/Modals/AugmentationModal';
 
 // Specialized Workspaces
 import { NLPWorkspace } from './components/Workspaces/NLPWorkspace';
@@ -96,6 +98,8 @@ export const App: React.FC = () => {
   const [isLabelMapOpen, setIsLabelMapOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isVideoStudioOpen, setIsVideoStudioOpen] = useState(false);
+  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [isAugmentationModalOpen, setIsAugmentationModalOpen] = useState(false);
 
   const quickFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -453,6 +457,70 @@ export const App: React.FC = () => {
     });
   };
 
+  /* Pre-Trained AI & Augmentation Handlers */
+  const handleApplyAnnotations = (
+    imageId: string,
+    annotations: any[],
+    newClasses: DatasetClass[],
+    overwrite: boolean
+  ) => {
+    updateProject((prev) => {
+      const updatedClasses = newClasses.length > 0 ? [...prev.classes, ...newClasses] : prev.classes;
+      const updatedImages = prev.images.map((img) => {
+        if (img.id === imageId) {
+          const finalAnns = overwrite ? annotations : [...img.annotations, ...annotations];
+          return {
+            ...img,
+            annotations: finalAnns,
+            status: (finalAnns.length > 0 ? 'completed' : img.status) as 'unannotated' | 'in_progress' | 'completed',
+          };
+        }
+        return img;
+      });
+
+      return {
+        ...prev,
+        classes: updatedClasses,
+        images: updatedImages,
+      };
+    });
+  };
+
+  const handleBatchApplyAnnotations = (
+    results: Array<{ imageId: string; annotations: any[] }>,
+    newClasses: DatasetClass[]
+  ) => {
+    const resultMap = new Map(results.map((r) => [r.imageId, r.annotations]));
+    updateProject((prev) => {
+      const updatedClasses = newClasses.length > 0 ? [...prev.classes, ...newClasses] : prev.classes;
+      const updatedImages = prev.images.map((img) => {
+        const aiAnns = resultMap.get(img.id);
+        if (aiAnns) {
+          return {
+            ...img,
+            annotations: [...img.annotations, ...aiAnns],
+            status: 'completed' as const,
+          };
+        }
+        return img;
+      });
+
+      return {
+        ...prev,
+        classes: updatedClasses,
+        images: updatedImages,
+      };
+    });
+  };
+
+  const handleApplyAugmentedImages = (newImages: DatasetImage[]) => {
+    if (!newImages.length) return;
+    updateProject((prev) => ({
+      ...prev,
+      images: [...prev.images, ...newImages],
+    }));
+  };
+
   const annotationCountByClass = new Map<string, number>();
   (currentProject.images || []).forEach((img) => {
     img.annotations.forEach((ann) => {
@@ -475,6 +543,8 @@ export const App: React.FC = () => {
           setIsNewDatasetModalOpen(true);
         }}
         onUpdateProjectName={(name) => updateProject((prev) => ({ ...prev, name }))}
+        onOpenAIModal={() => setIsAIModalOpen(true)}
+        onOpenAugmentationModal={() => setIsAugmentationModalOpen(true)}
       />
 
       {/* 2. Main View Router */}
@@ -559,6 +629,8 @@ export const App: React.FC = () => {
               onOpenExportModal={() => setIsExportOpen(true)}
               onOpenVideoStudio={() => setIsVideoStudioOpen(true)}
               onOpenAddImages={() => quickFileInputRef.current?.click()}
+              onOpenAIModal={() => setIsAIModalOpen(true)}
+              onOpenAugmentationModal={() => setIsAugmentationModalOpen(true)}
               onAutoClassify={handleAutoClassify}
               onCopyAnnotations={handleCopyAnnotations}
               onPasteAnnotations={handlePasteAnnotations}
@@ -757,6 +829,25 @@ export const App: React.FC = () => {
         onClose={() => setIsLabelMapOpen(false)}
         classes={currentProject.classes}
         onUpdateClasses={(classes) => updateProject((prev) => ({ ...prev, classes }))}
+      />
+
+      {/* AI Pre-Trained Models Auto-Annotation Modal */}
+      <AIAnnotationModal
+        isOpen={isAIModalOpen}
+        onClose={() => setIsAIModalOpen(false)}
+        project={currentProject}
+        activeImage={activeImage}
+        onApplyAnnotations={handleApplyAnnotations}
+        onBatchApplyAnnotations={handleBatchApplyAnnotations}
+      />
+
+      {/* Interactive Data Augmentation Studio Modal */}
+      <AugmentationModal
+        isOpen={isAugmentationModalOpen}
+        onClose={() => setIsAugmentationModalOpen(false)}
+        project={currentProject}
+        activeImage={activeImage}
+        onApplyAugmentedImages={handleApplyAugmentedImages}
       />
     </div>
   );

@@ -3,6 +3,9 @@ import sys
 import json
 import base64
 import tempfile
+
+sys.path.insert(0, os.path.dirname(__file__))
+
 import cv2
 from flask import Flask, request, jsonify, Response, send_file, send_from_directory
 from flask_cors import CORS
@@ -45,6 +48,7 @@ def handle_500(e):
     return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
 from mcp_server import handle_mcp_request, MCP_TOOLS
+from ai_models import get_available_models, run_ai_prediction, decode_image_input
 
 @app.route('/api/health', methods=['GET', 'OPTIONS'])
 def health():
@@ -53,7 +57,45 @@ def health():
         'service': 'AnnotateX Python Video & Stream Server',
         'yt_dlp_version': yt_dlp.version.__version__,
         'mcp_enabled': True,
+        'ai_models_enabled': True,
     })
+
+@app.route('/api/ai/models', methods=['GET', 'OPTIONS'])
+def list_ai_models():
+    """Returns list of all available pre-trained deep learning models."""
+    return jsonify({
+        'success': True,
+        'models': get_available_models(),
+    })
+
+@app.route('/api/ai/predict', methods=['POST', 'OPTIONS'])
+def predict_ai():
+    """
+    Runs automated detection / segmentation / classification on an image.
+    Accepts: { image: base64, modelId: str, confidence: float, iou: float, customClasses: list }
+    """
+    data = request.get_json(silent=True) or {}
+    img_data = data.get('image') or data.get('imageData') or data.get('image_base64')
+    if not img_data:
+        return jsonify({'success': False, 'error': 'Imagem não fornecida no corpo da requisição.'}), 400
+
+    img_bgr = decode_image_input(img_data)
+    if img_bgr is None:
+        return jsonify({'success': False, 'error': 'Falha ao decodificar imagem (formato base64 inválido).'}), 400
+
+    model_id = data.get('modelId', 'yolov11n')
+    conf_threshold = float(data.get('confidence', data.get('confidenceThreshold', 0.25)))
+    iou_threshold = float(data.get('iou', data.get('iouThreshold', 0.45)))
+    custom_classes = data.get('customClasses', [])
+
+    result = run_ai_prediction(
+        img_bgr=img_bgr,
+        model_id=model_id,
+        conf_threshold=conf_threshold,
+        iou_threshold=iou_threshold,
+        custom_classes=custom_classes,
+    )
+    return jsonify(result)
 
 @app.route('/api/mcp', methods=['GET', 'POST', 'OPTIONS'])
 def mcp_endpoint():
