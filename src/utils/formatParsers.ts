@@ -338,6 +338,60 @@ ${classNames}
 `;
 }
 
+export function generateConfigYaml(
+  project: DatasetProject,
+  version: YOLOVersion = 'v11',
+  task: YOLOTask = 'detection'
+): string {
+  const classList = project.classes
+    .map((c, idx) => `  - id: ${idx}\n    name: "${c.name}"\n    color: "${c.color}"`)
+    .join('\n');
+  const classNamesDict = project.classes
+    .map((c, idx) => `  ${idx}: "${c.name}"`)
+    .join('\n');
+
+  return `# ==============================================================================
+# AnnotateX Studio - Unified Dataset Configuration (config.yaml)
+# Generated: ${new Date().toISOString()}
+# ==============================================================================
+
+project_id: "${project.id}"
+project_name: "${project.name.replace(/"/g, '\\"')}"
+domain: "${project.domain || 'vision'}"
+task_type: "${project.taskType || task}"
+yolo_version: "${version}"
+
+# Dataset Splits & Paths
+path: .
+train: images/
+val: images/
+test: images/
+
+# Classes & Taxonomy
+nc: ${project.classes.length}
+names:
+${classNamesDict}
+
+classes_detailed:
+${classList}
+
+# Default Training Hyperparameters (Recommended)
+training_hyperparameters:
+  imgsz: 640
+  epochs: 100
+  batch: 16
+  lr0: 0.01
+  lrf: 0.01
+  momentum: 0.937
+  weight_decay: 0.0005
+  warmup_epochs: 3.0
+  optimizer: "auto"
+  augment: true
+  mosaic: 1.0
+  mixup: 0.1
+`;
+}
+
 export function generateClassesTxt(classes: DatasetClass[]): string {
   return classes.map((c) => c.name).join('\n');
 }

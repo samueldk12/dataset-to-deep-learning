@@ -2,11 +2,19 @@ import { Point } from './dataset';
 
 export type ToolType = 
   | 'select' 
+  | 'move'
+  | 'rotate'
+  | 'zoom'
+  | 'magic_wand'
   | 'bbox' 
   | 'polygon' 
-  | 'keypoint' 
   | 'polyline' 
+  | 'keypoint' 
   | 'circle' 
+  | 'cuboid3d'
+  | 'skeleton'
+  | 'brush'
+  | 'tag'
   | 'pan';
 
 export interface CanvasTransform {
@@ -24,8 +32,16 @@ export interface ImageFilters {
   invert: boolean;
   showGrid: boolean;
   showCrosshair: boolean;
+  
+  // Appearance Panel (CVAT / Label Studio style)
+  colorBy: 'label' | 'instance' | 'group';
   annotationOpacity: number; // 0 to 1 (e.g. 0.35)
+  selectedOpacity: number;   // 0 to 1 (e.g. 0.65)
+  outlinedBorders: boolean;
+  borderColor?: string;
   strokeWidth: number;       // 1 to 5 (e.g. 2)
+  showBitmap: boolean;
+  showProjections: boolean;  // Projections on X/Y axes
   showLabels: boolean;
   showPoints: boolean;
 }

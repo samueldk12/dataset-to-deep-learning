@@ -245,3 +245,101 @@ export function findBBoxHandle(p: Point, bbox: { x: number; y: number; width: nu
   }
   return null;
 }
+
+/**
+ * Merges two or more annotations into a single unified annotation.
+ * - If all are BBoxes: creates a new unified bounding box enclosing all bboxes.
+ * - If polygons or mixed bbox+polygon: extracts all points and generates the Convex Hull polygon.
+ * - If keypoints: unifies all landmark points.
+ * - If polylines: joins sequential paths.
+ */
+export function mergeAnnotations(
+  annotations: Annotation[],
+  targetClassId?: string
+): Annotation | null {
+  if (!annotations || annotations.length < 2) return null;
+
+  const base = annotations[0];
+  const finalClassId = targetClassId || base.classId;
+
+  // Extract all points
+  const allPoints: Point[] = [];
+  let allTypesAreBBox = true;
+  let allTypesAreKeypoint = true;
+
+  for (const ann of annotations) {
+    if (ann.type !== 'bbox') allTypesAreBBox = false;
+    if (ann.type !== 'keypoint') allTypesAreKeypoint = false;
+
+    if (ann.type === 'bbox' && ann.points.length >= 2) {
+      const box = getBoundingBox(ann.points, 'bbox');
+      allPoints.push(
+        { x: box.x, y: box.y },
+        { x: box.x + box.width, y: box.y },
+        { x: box.x + box.width, y: box.y + box.height },
+        { x: box.x, y: box.y + box.height }
+      );
+    } else if (ann.type === 'circle' && ann.points.length >= 2) {
+      const box = getBoundingBox(ann.points, 'circle');
+      allPoints.push(
+        { x: box.x, y: box.y },
+        { x: box.x + box.width, y: box.y },
+        { x: box.x + box.width, y: box.y + box.height },
+        { x: box.x, y: box.y + box.height }
+      );
+    } else {
+      allPoints.push(...ann.points);
+    }
+  }
+
+  if (allPoints.length === 0) return null;
+
+  // Case 1: All are BBoxes -> Result is an enclosing BBox
+  if (allTypesAreBBox) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of allPoints) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+    return {
+      id: `ann_merged_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      classId: finalClassId,
+      type: 'bbox',
+      points: [
+        { x: minX, y: minY },
+        { x: maxX, y: maxY },
+      ],
+      visible: true,
+      locked: false,
+      createdAt: Date.now(),
+    };
+  }
+
+  // Case 2: All are Keypoints -> Result is combined keypoints
+  if (allTypesAreKeypoint) {
+    return {
+      id: `ann_merged_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      classId: finalClassId,
+      type: 'keypoint',
+      points: allPoints,
+      visible: true,
+      locked: false,
+      createdAt: Date.now(),
+    };
+  }
+
+  // Case 3: Polygons / Mixed -> Result is a unified Convex Hull Polygon
+  const hullPoints = computeConvexHull(allPoints);
+  return {
+    id: `ann_merged_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+    classId: finalClassId,
+    type: 'polygon',
+    points: hullPoints,
+    visible: true,
+    locked: false,
+    createdAt: Date.now(),
+  };
+}
+

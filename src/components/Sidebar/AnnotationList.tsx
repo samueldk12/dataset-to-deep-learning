@@ -13,7 +13,10 @@ import {
   Plus, 
   X,
   Layers,
-  Sparkles
+  Sparkles,
+  GitMerge,
+  CheckSquare,
+  Square as SquareOutline
 } from 'lucide-react';
 import { Annotation, DatasetClass, DatasetImage } from '../../types/dataset';
 import { calculatePolygonArea, getBoundingBox } from '../../utils/geometry';
@@ -22,25 +25,30 @@ interface AnnotationListProps {
   image: DatasetImage | null;
   classes: DatasetClass[];
   selectedAnnotationId: string | null;
-  onSelectAnnotation: (id: string | null) => void;
+  selectedAnnotationIds?: string[];
+  onSelectAnnotation: (id: string | null, multi?: boolean) => void;
   onUpdateAnnotation: (ann: Annotation) => void;
   onDeleteAnnotation: (id: string) => void;
   onAddAnnotation: (ann: Annotation) => void;
   onUpdateImageTags: (tags: string[]) => void;
+  onMergeAnnotations?: (ids: string[], targetClassId?: string) => void;
 }
 
 export const AnnotationList: React.FC<AnnotationListProps> = ({
   image,
   classes,
   selectedAnnotationId,
+  selectedAnnotationIds = [],
   onSelectAnnotation,
   onUpdateAnnotation,
   onDeleteAnnotation,
   onAddAnnotation,
   onUpdateImageTags,
+  onMergeAnnotations,
 }) => {
   const [newTag, setNewTag] = useState('');
   const [isAddingTag, setIsAddingTag] = useState(false);
+  const [mergeTargetClassId, setMergeTargetClassId] = useState<string>('');
 
   if (!image) {
     return (
@@ -49,6 +57,10 @@ export const AnnotationList: React.FC<AnnotationListProps> = ({
       </div>
     );
   }
+
+  const effectiveSelectedIds = selectedAnnotationIds.length > 0 
+    ? selectedAnnotationIds 
+    : (selectedAnnotationId ? [selectedAnnotationId] : []);
 
   const classMap = new Map<string, DatasetClass>(classes.map((c) => [c.id, c]));
 
@@ -71,7 +83,6 @@ export const AnnotationList: React.FC<AnnotationListProps> = ({
     const duplicated: Annotation = {
       ...ann,
       id: `ann_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-      // Slightly shift points to avoid exact overlap
       points: ann.points.map((p) => ({ x: p.x + 15, y: p.y + 15 })),
       createdAt: Date.now(),
     };
@@ -90,13 +101,19 @@ export const AnnotationList: React.FC<AnnotationListProps> = ({
     }
   };
 
+  const handleExecuteMerge = () => {
+    if (effectiveSelectedIds.length < 2 || !onMergeAnnotations) return;
+    const targetCls = mergeTargetClassId || undefined;
+    onMergeAnnotations(effectiveSelectedIds, targetCls);
+  };
+
   return (
     <div className="flex flex-col h-full bg-slate-900 border-l border-slate-800 select-none text-xs">
-      {/* Header */}
+      {/* 1. Header */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-800">
         <span className="font-semibold text-slate-200 flex items-center gap-1.5">
           <Layers className="w-3.5 h-3.5 text-blue-400" />
-          Anotações na Imagem ({image.annotations?.length || 0})
+          Anotações ({image.annotations?.length || 0})
         </span>
 
         {image.annotations.length > 0 && (
@@ -106,7 +123,49 @@ export const AnnotationList: React.FC<AnnotationListProps> = ({
         )}
       </div>
 
-      {/* Image Classification Tags Section */}
+      {/* 2. MERGE ACTION BANNER (When 2+ annotations are selected) */}
+      {effectiveSelectedIds.length >= 2 && onMergeAnnotations && (
+        <div className="p-2.5 bg-blue-950/60 border-b border-blue-800/80 flex flex-col gap-2 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-blue-300 text-xs flex items-center gap-1.5">
+              <GitMerge className="w-3.5 h-3.5 text-blue-400" />
+              {effectiveSelectedIds.length} Anotações Selecionadas
+            </span>
+            <button
+              onClick={() => onSelectAnnotation(null)}
+              className="text-[10px] text-slate-400 hover:text-slate-200"
+            >
+              Desmarcar
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {/* Target Class Selection */}
+            <select
+              value={mergeTargetClassId || (effectiveSelectedIds[0] ? image.annotations.find(a => a.id === effectiveSelectedIds[0])?.classId : '')}
+              onChange={(e) => setMergeTargetClassId(e.target.value)}
+              className="flex-1 bg-slate-900 border border-blue-700/80 rounded px-2 py-1 text-xs text-white focus:outline-none"
+            >
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  Classe: {c.name}
+                </option>
+              ))}
+            </select>
+
+            <button
+              onClick={handleExecuteMerge}
+              className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs rounded transition-colors flex items-center gap-1 shrink-0"
+              title="Mesclar anotações selecionadas (Tecla M)"
+            >
+              <GitMerge className="w-3 h-3" />
+              <span>Mesclar (M)</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Image Classification Tags Section */}
       <div className="p-2.5 bg-slate-950/40 border-b border-slate-800 flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1">
@@ -164,18 +223,21 @@ export const AnnotationList: React.FC<AnnotationListProps> = ({
         </div>
       </div>
 
-      {/* Annotations List */}
+      {/* 4. Annotations List with Multi-Select Checkboxes */}
       <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5">
         {image.annotations && image.annotations.length > 0 ? (
           image.annotations.map((ann, index) => {
-            const isSelected = ann.id === selectedAnnotationId;
+            const isSelected = effectiveSelectedIds.includes(ann.id);
             const cls = classMap.get(ann.classId) || { name: 'Desconhecido', color: '#3b82f6' };
             const box = getBoundingBox(ann.points, ann.type);
 
             return (
               <div
                 key={ann.id}
-                onClick={() => onSelectAnnotation(ann.id)}
+                onClick={(e) => {
+                  const multi = e.shiftKey || e.ctrlKey || e.metaKey;
+                  onSelectAnnotation(ann.id, multi);
+                }}
                 className={`group flex flex-col p-2 rounded-xl cursor-pointer border transition-all ${
                   isSelected
                     ? 'bg-blue-600/15 border-blue-500/60 shadow-md ring-1 ring-blue-500/30'
@@ -183,8 +245,23 @@ export const AnnotationList: React.FC<AnnotationListProps> = ({
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  {/* Left: Icon, Color, Class Selector */}
+                  {/* Left: Multi-select Box, Icon, Color, Class Selector */}
                   <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectAnnotation(ann.id, true);
+                      }}
+                      className="text-slate-500 hover:text-blue-400 p-0.5"
+                      title={isSelected ? "Desmarcar da seleção" : "Selecionar para mesclar (Shift/Ctrl+Click)"}
+                    >
+                      {isSelected ? (
+                        <CheckSquare className="w-3.5 h-3.5 text-blue-400" />
+                      ) : (
+                        <SquareOutline className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400" />
+                      )}
+                    </button>
+
                     <span title={ann.type}>{getIconForType(ann.type)}</span>
                     <span
                       style={{ backgroundColor: cls.color }}
@@ -199,7 +276,7 @@ export const AnnotationList: React.FC<AnnotationListProps> = ({
                         onUpdateAnnotation({ ...ann, classId: e.target.value });
                       }}
                       onClick={(e) => e.stopPropagation()}
-                      className="bg-transparent border-0 text-slate-200 font-medium text-xs focus:outline-none cursor-pointer truncate max-w-[130px]"
+                      className="bg-transparent border-0 text-slate-200 font-medium text-xs focus:outline-none cursor-pointer truncate max-w-[120px]"
                     >
                       {classes.map((c) => (
                         <option key={c.id} value={c.id} className="bg-slate-900 text-slate-100">

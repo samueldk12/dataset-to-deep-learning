@@ -20,11 +20,24 @@ interface CanvasProps {
   filters: ImageFilters;
   transform: CanvasTransform;
   selectedAnnotationId: string | null;
+  selectedAnnotationIds?: string[];
   onTransformChange: (transform: CanvasTransform) => void;
-  onSelectAnnotation: (id: string | null) => void;
+  onSelectAnnotation: (id: string | null, multi?: boolean) => void;
   onAddAnnotation: (annotation: Annotation) => void;
   onUpdateAnnotation: (annotation: Annotation) => void;
   onDeleteAnnotation: (id: string) => void;
+  onMergeAnnotations?: (ids: string[]) => void;
+  onPropagateToNext?: () => void;
+}
+
+// Generate distinct deterministic color for instance-based coloring
+function getInstanceColor(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = id.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const h = Math.abs(hash) % 360;
+  return `hsl(${h}, 85%, 55%)`;
 }
 
 export const Canvas: React.FC<CanvasProps> = ({
@@ -35,15 +48,22 @@ export const Canvas: React.FC<CanvasProps> = ({
   filters,
   transform,
   selectedAnnotationId,
+  selectedAnnotationIds = [],
   onTransformChange,
   onSelectAnnotation,
   onAddAnnotation,
   onUpdateAnnotation,
   onDeleteAnnotation,
+  onMergeAnnotations,
+  onPropagateToNext,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageElementRef = useRef<HTMLImageElement | null>(null);
+
+  const effectiveSelectedIds = selectedAnnotationIds.length > 0
+    ? selectedAnnotationIds
+    : (selectedAnnotationId ? [selectedAnnotationId] : []);
 
   // Drawing and interaction state
   const [drawingState, setDrawingState] = useState<DrawingState>({
@@ -70,11 +90,11 @@ export const Canvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     setDrawingState((prev) => ({
       ...prev,
-      selectedAnnotationId,
+      selectedAnnotationId: effectiveSelectedIds[0] || null,
       selectedVertexIndex: null,
       selectedHandle: null,
     }));
-  }, [selectedAnnotationId]);
+  }, [selectedAnnotationId, selectedAnnotationIds]);
 
   // Load image element
   useEffect(() => {
@@ -108,80 +128,49 @@ export const Canvas: React.FC<CanvasProps> = ({
     [transform]
   );
 
-  // Fit image to canvas viewport
-  const fitToScreen = useCallback(() => {
-    if (!image || !containerRef.current) return;
-    const container = containerRef.current;
-    const padding = 40;
-    const availWidth = container.clientWidth - padding * 2;
-    const availHeight = container.clientHeight - padding * 2;
-
-    const scaleX = availWidth / image.width;
-    const scaleY = availHeight / image.height;
-    const scale = Math.min(scaleX, scaleY, 2);
-
-    const offsetX = (container.clientWidth - image.width * scale) / 2;
-    const offsetY = (container.clientHeight - image.height * scale) / 2;
-
-    onTransformChange({ scale, offsetX, offsetY });
-  }, [image, onTransformChange]);
-
-  // On image change or initial load, auto-fit
-  useEffect(() => {
-    if (image) {
-      fitToScreen();
-    }
-  }, [image?.id]);
-
-  // Keyboard shortcuts
+  // Keyboard Shortcuts Listener (M for Merge, Shift+D for Propagate, Delete/Backspace, etc.)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
-      if (e.code === 'Space' && !e.repeat) {
+      if (e.code === 'Space') {
         setIsSpacePressed(true);
       }
 
       if (e.key === 'Escape') {
-        if (drawingState.isDrawing) {
-          setDrawingState((prev) => ({
-            ...prev,
-            isDrawing: false,
-            currentPoints: [],
-            startPoint: null,
-          }));
-        } else {
-          onSelectAnnotation(null);
+        setDrawingState((prev) => ({
+          ...prev,
+          isDrawing: false,
+          currentPoints: [],
+          startPoint: null,
+        }));
+      }
+
+      // Merge (M)
+      if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.metaKey) {
+        if (effectiveSelectedIds.length >= 2 && onMergeAnnotations) {
+          e.preventDefault();
+          onMergeAnnotations(effectiveSelectedIds);
         }
       }
 
-      if (e.key === 'Enter' && drawingState.isDrawing && activeTool === 'polygon') {
-        if (drawingState.currentPoints.length >= 3) {
-          finishPolygon(drawingState.currentPoints);
-        }
+      // Propagate to Next Image (Shift+D)
+      if ((e.key === 'd' || e.key === 'D') && e.shiftKey) {
+        e.preventDefault();
+        onPropagateToNext?.();
       }
 
-      if (e.key === 'Enter' && drawingState.isDrawing && activeTool === 'polyline') {
-        if (drawingState.currentPoints.length >= 2) {
-          finishPolyline(drawingState.currentPoints);
-        }
+      if (e.key === 'Enter' && drawingState.isDrawing) {
+        if (activeTool === 'polygon') finishPolygon(drawingState.currentPoints);
+        else if (activeTool === 'polyline') finishPolyline(drawingState.currentPoints);
       }
 
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedAnnotationId) {
-        if (drawingState.selectedVertexIndex !== null && image) {
-          const ann = image.annotations.find((a) => a.id === selectedAnnotationId);
-          if (ann && ann.type === 'polygon' && ann.points.length > 3) {
-            const newPoints = ann.points.filter((_, idx) => idx !== drawingState.selectedVertexIndex);
-            onUpdateAnnotation({ ...ann, points: newPoints });
-            setDrawingState((prev) => ({ ...prev, selectedVertexIndex: null }));
-            return;
-          }
-        }
-        onDeleteAnnotation(selectedAnnotationId);
+      if ((e.key === 'Delete' || e.key === 'Backspace') && effectiveSelectedIds.length > 0) {
+        effectiveSelectedIds.forEach((id) => onDeleteAnnotation(id));
       }
 
-      if (e.altKey && (e.key === 'c' || e.key === 'C') && selectedAnnotationId && image) {
-        const ann = image.annotations.find((a) => a.id === selectedAnnotationId);
+      if (e.altKey && (e.key === 'c' || e.key === 'C') && effectiveSelectedIds[0] && image) {
+        const ann = image.annotations.find((a) => a.id === effectiveSelectedIds[0]);
         if (ann && ann.type === 'polygon') {
           const hull = computeConvexHull(ann.points);
           onUpdateAnnotation({ ...ann, points: hull });
@@ -204,11 +193,13 @@ export const Canvas: React.FC<CanvasProps> = ({
   }, [
     drawingState,
     activeTool,
-    selectedAnnotationId,
+    effectiveSelectedIds,
     image,
     onSelectAnnotation,
     onDeleteAnnotation,
     onUpdateAnnotation,
+    onMergeAnnotations,
+    onPropagateToNext,
   ]);
 
   const finishPolygon = useCallback(
@@ -262,159 +253,92 @@ export const Canvas: React.FC<CanvasProps> = ({
      ========================================================================== */
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!image) return;
+    const isMultiSelect = e.shiftKey || e.ctrlKey || e.metaKey;
 
-    if (isSpacePressed || e.button === 1 || activeTool === 'pan') {
+    // Pan canvas with middle click, Space, or Pan tool
+    if (e.button === 1 || isSpacePressed || activeTool === 'pan') {
       setDrawingState((prev) => ({
         ...prev,
         isPanning: true,
-        panStart: { x: e.clientX, y: e.clientY },
+        panStart: { x: e.clientX - transform.offsetX, y: e.clientY - transform.offsetY },
       }));
       return;
     }
 
-    if (e.button !== 0) return;
+    if (e.button !== 0) return; // Left click only
 
     const imgCoord = screenToImageCoords(e.clientX, e.clientY);
-    if (!imgCoord) return;
+    if (!imgCoord || !image) return;
 
-    const threshold = 14 / transform.scale;
+    const threshold = 10 / transform.scale;
 
-    // 1. SELECT TOOL & DIRECT VERTEX / POINT DRAGGING
-    if (activeTool === 'select' || (!drawingState.isDrawing && activeTool === 'polygon')) {
-      // Check if clicking ANY existing vertex across visible annotations to drag it
-      for (let i = image.annotations.length - 1; i >= 0; i--) {
-        const ann = image.annotations[i];
-        if (ann.visible === false || ann.locked) continue;
-
-        // Keypoint: dragging single point
-        if (ann.type === 'keypoint' && ann.points.length > 0) {
-          if (distance(imgCoord, ann.points[0]) <= threshold * 1.3) {
-            onSelectAnnotation(ann.id);
-            setDrawingState((prev) => ({
-              ...prev,
-              selectedAnnotationId: ann.id,
-              selectedVertexIndex: 0,
-              isDraggingVertex: true,
-              isDraggingShape: false,
-            }));
-            return;
+    // 1. SELECT / MOVE / EDIT TOOL
+    if (activeTool === 'select' || activeTool === 'move') {
+      // Check if clicking existing selected shape handles or vertices
+      if (effectiveSelectedIds.length > 0) {
+        const selAnn = image.annotations.find((a) => a.id === effectiveSelectedIds[0]);
+        if (selAnn) {
+          // BBox: check handles
+          if (selAnn.type === 'bbox') {
+            const box = getBoundingBox(selAnn.points, 'bbox');
+            const handle = findBBoxHandle(imgCoord, box, threshold);
+            if (handle) {
+              setDrawingState((prev) => ({
+                ...prev,
+                selectedHandle: handle,
+                isDraggingShape: false,
+                isDraggingVertex: false,
+                shapeDragStart: imgCoord,
+                initialShapePoints: [...selAnn.points],
+              }));
+              return;
+            }
           }
-        }
 
-        // Polygon / Polyline: dragging specific vertex
-        if (ann.type === 'polygon' || ann.type === 'polyline') {
-          const vIdx = findNearbyVertexIndex(imgCoord, ann.points, threshold);
-          if (vIdx !== -1) {
-            onSelectAnnotation(ann.id);
-            setDrawingState((prev) => ({
-              ...prev,
-              selectedAnnotationId: ann.id,
-              selectedVertexIndex: vIdx,
-              isDraggingVertex: true,
-              isDraggingShape: false,
-            }));
-            return;
-          }
-        }
-
-        // Circle: dragging center or perimeter point
-        if (ann.type === 'circle' && ann.points.length >= 2) {
-          const centerDist = distance(imgCoord, ann.points[0]);
-          const radius = distance(ann.points[0], ann.points[1]);
-          const perimeterDist = Math.abs(centerDist - radius);
-
-          if (perimeterDist <= threshold) {
-            // Drag radius
-            onSelectAnnotation(ann.id);
-            setDrawingState((prev) => ({
-              ...prev,
-              selectedAnnotationId: ann.id,
-              selectedVertexIndex: 1,
-              isDraggingVertex: true,
-              isDraggingShape: false,
-            }));
-            return;
-          } else if (centerDist <= threshold) {
-            // Drag center
-            onSelectAnnotation(ann.id);
-            setDrawingState((prev) => ({
-              ...prev,
-              selectedAnnotationId: ann.id,
-              selectedVertexIndex: 0,
-              isDraggingVertex: true,
-              isDraggingShape: false,
-            }));
-            return;
-          }
-        }
-
-        // BBox: check handles if already selected
-        if (ann.type === 'bbox' && ann.id === selectedAnnotationId) {
-          const box = getBoundingBox(ann.points, 'bbox');
-          const handle = findBBoxHandle(imgCoord, box, threshold);
-          if (handle) {
-            setDrawingState((prev) => ({
-              ...prev,
-              selectedHandle: handle,
-              isDraggingShape: false,
-              isDraggingVertex: false,
-              shapeDragStart: imgCoord,
-              initialShapePoints: [...ann.points],
-            }));
-            return;
+          // Polygon / Polyline vertex
+          if (selAnn.type === 'polygon' || selAnn.type === 'polyline') {
+            const vIdx = findNearbyVertexIndex(imgCoord, selAnn.points, threshold);
+            if (vIdx !== -1) {
+              setDrawingState((prev) => ({
+                ...prev,
+                selectedVertexIndex: vIdx,
+                isDraggingVertex: true,
+                isDraggingShape: false,
+              }));
+              return;
+            }
           }
         }
       }
 
-      // Check if clicking on edge of selected polygon to insert a new vertex
-      if (selectedAnnotationId) {
-        const selAnn = image.annotations.find((a) => a.id === selectedAnnotationId);
-        if (selAnn && (selAnn.type === 'polygon' || selAnn.type === 'polyline')) {
-          const edge = findClosestEdge(imgCoord, selAnn.points, threshold);
-          if (edge) {
-            const newPoints = [...selAnn.points];
-            newPoints.splice(edge.edgeIndex + 1, 0, edge.insertPoint);
-            onUpdateAnnotation({ ...selAnn, points: newPoints });
-            setDrawingState((prev) => ({
-              ...prev,
-              selectedVertexIndex: edge.edgeIndex + 1,
-              isDraggingVertex: true,
-              isDraggingShape: false,
-            }));
-            return;
-          }
-        }
-      }
+      // Check if clicking on any annotation on canvas
+      const hit = [...image.annotations].reverse().find((a) => 
+        a.visible !== false && !a.locked && isPointInsideAnnotation(imgCoord, a, threshold)
+      );
 
-      // Check if clicking inside whole shape to select/drag it
-      if (activeTool === 'select') {
-        const hit = [...image.annotations].reverse().find((a) => 
-          a.visible !== false && !a.locked && isPointInsideAnnotation(imgCoord, a, threshold)
-        );
-
-        if (hit) {
-          onSelectAnnotation(hit.id);
-          setDrawingState((prev) => ({
-            ...prev,
-            selectedAnnotationId: hit.id,
-            selectedVertexIndex: null,
-            selectedHandle: null,
-            isDraggingShape: true,
-            shapeDragStart: imgCoord,
-            initialShapePoints: hit.points.map((p) => ({ ...p })),
-          }));
-        } else {
+      if (hit) {
+        onSelectAnnotation(hit.id, isMultiSelect);
+        setDrawingState((prev) => ({
+          ...prev,
+          selectedAnnotationId: hit.id,
+          selectedVertexIndex: null,
+          selectedHandle: null,
+          isDraggingShape: true,
+          shapeDragStart: imgCoord,
+          initialShapePoints: hit.points.map((p) => ({ ...p })),
+        }));
+      } else {
+        if (!isMultiSelect) {
           onSelectAnnotation(null);
-          setDrawingState((prev) => ({
-            ...prev,
-            selectedAnnotationId: null,
-            selectedVertexIndex: null,
-            selectedHandle: null,
-          }));
         }
-        return;
+        setDrawingState((prev) => ({
+          ...prev,
+          selectedAnnotationId: null,
+          selectedVertexIndex: null,
+          selectedHandle: null,
+        }));
       }
+      return;
     }
 
     // 2. POLYGON TOOL
@@ -461,20 +385,32 @@ export const Canvas: React.FC<CanvasProps> = ({
       return;
     }
 
-    // 4. BOUNDING BOX TOOL
-    if (activeTool === 'bbox') {
+    // 4. BOUNDING BOX TOOL / CUBOID 3D
+    if (activeTool === 'bbox' || activeTool === 'cuboid3d') {
       setDrawingState((prev) => ({
         ...prev,
         isDrawing: true,
         startPoint: imgCoord,
         cursorPoint: imgCoord,
-        currentPoints: [imgCoord, imgCoord],
+        currentPoints: [imgCoord],
       }));
       return;
     }
 
-    // 5. KEYPOINT TOOL
-    if (activeTool === 'keypoint') {
+    // 5. CIRCLE TOOL
+    if (activeTool === 'circle') {
+      setDrawingState((prev) => ({
+        ...prev,
+        isDrawing: true,
+        startPoint: imgCoord,
+        cursorPoint: imgCoord,
+        currentPoints: [imgCoord],
+      }));
+      return;
+    }
+
+    // 6. KEYPOINT TOOL / SKELETON
+    if (activeTool === 'keypoint' || activeTool === 'skeleton') {
       const newAnn: Annotation = {
         id: `ann_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
         classId: activeClassId,
@@ -487,34 +423,15 @@ export const Canvas: React.FC<CanvasProps> = ({
       onAddAnnotation(newAnn);
       return;
     }
-
-    // 6. CIRCLE TOOL
-    if (activeTool === 'circle') {
-      setDrawingState((prev) => ({
-        ...prev,
-        isDrawing: true,
-        startPoint: imgCoord,
-        cursorPoint: imgCoord,
-        currentPoints: [imgCoord, imgCoord],
-      }));
-      return;
-    }
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // 1. Panning
     if (drawingState.isPanning && drawingState.panStart) {
-      const dx = e.clientX - drawingState.panStart.x;
-      const dy = e.clientY - drawingState.panStart.y;
       onTransformChange({
         ...transform,
-        offsetX: transform.offsetX + dx,
-        offsetY: transform.offsetY + dy,
+        offsetX: e.clientX - drawingState.panStart.x,
+        offsetY: e.clientY - drawingState.panStart.y,
       });
-      setDrawingState((prev) => ({
-        ...prev,
-        panStart: { x: e.clientX, y: e.clientY },
-      }));
       return;
     }
 
@@ -523,108 +440,46 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     setDrawingState((prev) => ({ ...prev, cursorPoint: imgCoord }));
 
-    // 2. Dragging Existing Vertex or Point
-    if (drawingState.isDraggingVertex && selectedAnnotationId && drawingState.selectedVertexIndex !== null) {
-      const ann = image.annotations.find((a) => a.id === selectedAnnotationId);
+    const threshold = 10 / transform.scale;
+
+    // Handle vertex drag
+    if (drawingState.isDraggingVertex && effectiveSelectedIds[0] && drawingState.selectedVertexIndex !== null) {
+      const ann = image.annotations.find((a) => a.id === effectiveSelectedIds[0]);
       if (ann) {
-        if (ann.type === 'circle') {
-          if (drawingState.selectedVertexIndex === 0) {
-            // Dragging center: shift whole circle
-            const r = distance(ann.points[0], ann.points[1]);
-            const newPoints = [imgCoord, { x: imgCoord.x + r, y: imgCoord.y }];
-            onUpdateAnnotation({ ...ann, points: newPoints });
-          } else {
-            // Dragging radius handle
-            const newPoints = [ann.points[0], imgCoord];
-            onUpdateAnnotation({ ...ann, points: newPoints });
-          }
-        } else {
-          const newPoints = [...ann.points];
-          newPoints[drawingState.selectedVertexIndex] = imgCoord;
-          onUpdateAnnotation({ ...ann, points: newPoints });
-        }
+        const newPoints = [...ann.points];
+        newPoints[drawingState.selectedVertexIndex] = imgCoord;
+        onUpdateAnnotation({ ...ann, points: newPoints });
       }
       return;
     }
 
-    // 3. Resizing BBox via Handle
-    if (drawingState.selectedHandle && selectedAnnotationId && drawingState.initialShapePoints && drawingState.shapeDragStart) {
-      const ann = image.annotations.find((a) => a.id === selectedAnnotationId);
-      if (ann && ann.type === 'bbox') {
-        const p1 = drawingState.initialShapePoints[0];
-        const p2 = drawingState.initialShapePoints[1];
-        let minX = Math.min(p1.x, p2.x);
-        let minY = Math.min(p1.y, p2.y);
-        let maxX = Math.max(p1.x, p2.x);
-        let maxY = Math.max(p1.y, p2.y);
-
-        const handle = drawingState.selectedHandle;
-        if (handle.includes('w')) minX = imgCoord.x;
-        if (handle.includes('e')) maxX = imgCoord.x;
-        if (handle.includes('n')) minY = imgCoord.y;
-        if (handle.includes('s')) maxY = imgCoord.y;
-
-        onUpdateAnnotation({
-          ...ann,
-          points: [
-            { x: minX, y: minY },
-            { x: maxX, y: maxY },
-          ],
-        });
-      }
-      return;
-    }
-
-    // 4. Dragging Whole Shape
-    if (drawingState.isDraggingShape && selectedAnnotationId && drawingState.shapeDragStart && drawingState.initialShapePoints) {
-      const ann = image.annotations.find((a) => a.id === selectedAnnotationId);
+    // Handle shape translation drag
+    if (drawingState.isDraggingShape && effectiveSelectedIds[0] && drawingState.shapeDragStart && drawingState.initialShapePoints) {
+      const dx = imgCoord.x - drawingState.shapeDragStart.x;
+      const dy = imgCoord.y - drawingState.shapeDragStart.y;
+      const ann = image.annotations.find((a) => a.id === effectiveSelectedIds[0]);
       if (ann) {
-        const dx = imgCoord.x - drawingState.shapeDragStart.x;
-        const dy = imgCoord.y - drawingState.shapeDragStart.y;
-        const shiftedPoints = drawingState.initialShapePoints.map((p) => ({
+        const translatedPoints = drawingState.initialShapePoints.map((p) => ({
           x: p.x + dx,
           y: p.y + dy,
         }));
-        onUpdateAnnotation({ ...ann, points: shiftedPoints });
+        onUpdateAnnotation({ ...ann, points: translatedPoints });
       }
       return;
     }
 
-    // 5. In-progress Drawing BBox or Circle
-    if (drawingState.isDrawing && (activeTool === 'bbox' || activeTool === 'circle') && drawingState.startPoint) {
-      setDrawingState((prev) => ({
-        ...prev,
-        currentPoints: [prev.startPoint!, imgCoord],
-      }));
-      return;
-    }
-
-    // 6. Hover detection for vertices
-    const threshold = 14 / transform.scale;
-    let foundHoveredV: { annId: string; vertexIndex: number } | null = null;
-
-    for (let i = image.annotations.length - 1; i >= 0; i--) {
-      const ann = image.annotations[i];
-      if (ann.visible === false) continue;
-      const vIdx = findNearbyVertexIndex(imgCoord, ann.points, threshold);
-      if (vIdx !== -1) {
-        foundHoveredV = { annId: ann.id, vertexIndex: vIdx };
-        break;
+    // Check vertex hover
+    if (activeTool === 'select' && !drawingState.isDrawing) {
+      let foundVertex: { annId: string; vertexIndex: number } | null = null;
+      for (const ann of image.annotations) {
+        if (ann.visible === false || ann.locked) continue;
+        const vIdx = findNearbyVertexIndex(imgCoord, ann.points, threshold);
+        if (vIdx !== -1) {
+          foundVertex = { annId: ann.id, vertexIndex: vIdx };
+          break;
+        }
       }
-    }
-    setHoveredVertex(foundHoveredV);
-
-    // Hover edge for insertion
-    if (activeTool === 'select' && selectedAnnotationId) {
-      const ann = image.annotations.find((a) => a.id === selectedAnnotationId);
-      if (ann && (ann.type === 'polygon' || ann.type === 'polyline') && !foundHoveredV) {
-        const edge = findClosestEdge(imgCoord, ann.points, 10 / transform.scale);
-        setHoveredEdge(edge);
-      } else {
-        setHoveredEdge(null);
-      }
-    } else {
-      setHoveredEdge(null);
+      setHoveredVertex(foundVertex);
     }
   };
 
@@ -646,7 +501,8 @@ export const Canvas: React.FC<CanvasProps> = ({
       return;
     }
 
-    if (drawingState.isDrawing && activeTool === 'bbox' && drawingState.startPoint && drawingState.cursorPoint) {
+    // Finish BBox
+    if (drawingState.isDrawing && (activeTool === 'bbox' || activeTool === 'cuboid3d') && drawingState.startPoint && drawingState.cursorPoint) {
       const p1 = drawingState.startPoint;
       const p2 = drawingState.cursorPoint;
       const w = Math.abs(p2.x - p1.x);
@@ -677,6 +533,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       return;
     }
 
+    // Finish Circle
     if (drawingState.isDrawing && activeTool === 'circle' && drawingState.startPoint && drawingState.cursorPoint) {
       const r = distance(drawingState.startPoint, drawingState.cursorPoint);
       if (r > 4) {
@@ -703,11 +560,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleDoubleClick = () => {
-    if (drawingState.isDrawing && activeTool === 'polygon') {
-      finishPolygon(drawingState.currentPoints);
-    } else if (drawingState.isDrawing && activeTool === 'polyline') {
-      finishPolyline(drawingState.currentPoints);
-    }
+    if (drawingState.isDrawing && activeTool === 'polygon') finishPolygon(drawingState.currentPoints);
+    else if (drawingState.isDrawing && activeTool === 'polyline') finishPolyline(drawingState.currentPoints);
   };
 
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -796,19 +650,38 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     const classMap = new Map<string, DatasetClass>(classes.map((c) => [c.id, c]));
 
-    // 3. Render Annotations
+    // 3. Render Annotations with Appearance Panel Rules
     if (image?.annotations) {
       image.annotations.forEach((ann) => {
         if (ann.visible === false) return;
         const cls = classMap.get(ann.classId) || { name: 'Desconhecido', color: '#3b82f6', visible: true, locked: false, id: '' };
         if (!cls.visible) return;
 
-        const isSelected = ann.id === selectedAnnotationId;
+        const isSelected = effectiveSelectedIds.includes(ann.id);
         drawAnnotation(ctx, ann, cls, isSelected, filters, transform.scale, hoveredVertex);
+
+        // Draw Projections if enabled
+        if (filters.showProjections && image) {
+          const box = getBoundingBox(ann.points, ann.type);
+          ctx.save();
+          ctx.strokeStyle = 'rgba(59, 130, 246, 0.3)';
+          ctx.lineWidth = 1 / transform.scale;
+          ctx.setLineDash([3 / transform.scale, 3 / transform.scale]);
+
+          // Vertical projections
+          ctx.beginPath();
+          ctx.moveTo(box.x, 0); ctx.lineTo(box.x, image.height);
+          ctx.moveTo(box.x + box.width, 0); ctx.lineTo(box.x + box.width, image.height);
+          // Horizontal projections
+          ctx.moveTo(0, box.y); ctx.lineTo(image.width, box.y);
+          ctx.moveTo(0, box.y + box.height); ctx.lineTo(image.width, box.y + box.height);
+          ctx.stroke();
+          ctx.restore();
+        }
       });
     }
 
-    // 4. Render Active In-Progress Annotation
+    // 4. Render Active In-Progress Shape
     if (drawingState.isDrawing) {
       const activeClass = classes.find((c) => c.id === activeClassId) || {
         name: 'Ativo',
@@ -821,20 +694,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       drawInProgressShape(ctx, activeTool, drawingState, activeClass, transform.scale);
     }
 
-    // 5. Draw Edge Insertion Indicator
-    if (hoveredEdge && activeTool === 'select') {
-      ctx.save();
-      ctx.fillStyle = '#10b981';
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2 / transform.scale;
-      ctx.beginPath();
-      ctx.arc(hoveredEdge.insertPoint.x, hoveredEdge.insertPoint.y, 6 / transform.scale, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // 6. Draw Crosshair Cursor
+    // 5. Draw Crosshair Cursor
     if (filters.showCrosshair && drawingState.cursorPoint && image) {
       ctx.save();
       ctx.strokeStyle = 'rgba(59, 130, 246, 0.4)';
@@ -858,9 +718,8 @@ export const Canvas: React.FC<CanvasProps> = ({
     activeTool,
     filters,
     transform,
-    selectedAnnotationId,
+    effectiveSelectedIds,
     drawingState,
-    hoveredEdge,
     hoveredVertex,
   ]);
 
@@ -876,7 +735,6 @@ export const Canvas: React.FC<CanvasProps> = ({
     return () => observer.disconnect();
   }, [render]);
 
-  // Determine cursor styling
   let cursorClass = 'cursor-crosshair';
   if (isSpacePressed || activeTool === 'pan') cursorClass = 'cursor-grab active:cursor-grabbing';
   else if (drawingState.isDraggingVertex || drawingState.isDraggingShape) cursorClass = 'cursor-move';
@@ -897,46 +755,25 @@ export const Canvas: React.FC<CanvasProps> = ({
         className="absolute inset-0 block"
       />
 
-      {/* Floating coordinates and zoom badge */}
+      {/* Floating coordinates badge */}
       <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/90 backdrop-blur border border-slate-800 text-xs font-mono text-slate-300 shadow-xl pointer-events-none">
         <span className="text-blue-400 font-semibold">{Math.round(transform.scale * 100)}%</span>
         <span className="text-slate-600">|</span>
-        <span>
-          X: {drawingState.cursorPoint ? Math.round(drawingState.cursorPoint.x) : 0}px
-        </span>
-        <span>
-          Y: {drawingState.cursorPoint ? Math.round(drawingState.cursorPoint.y) : 0}px
-        </span>
-        {hoveredVertex && (
+        <span>X: {drawingState.cursorPoint ? Math.round(drawingState.cursorPoint.x) : 0}px</span>
+        <span>Y: {drawingState.cursorPoint ? Math.round(drawingState.cursorPoint.y) : 0}px</span>
+        {effectiveSelectedIds.length > 1 && (
           <>
             <span className="text-slate-600">|</span>
-            <span className="text-emerald-400 font-semibold">Ponto #{hoveredVertex.vertexIndex + 1} (Arraste para mover)</span>
-          </>
-        )}
-        {image && (
-          <>
-            <span className="text-slate-600">|</span>
-            <span className="text-slate-400">
-              {image.width} × {image.height}px
-            </span>
+            <span className="text-purple-400 font-semibold">{effectiveSelectedIds.length} selecionadas (Pressione M para mesclar)</span>
           </>
         )}
       </div>
-
-      {/* Hints */}
-      {drawingState.isDrawing && activeTool === 'polygon' && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 rounded-full bg-blue-600/95 backdrop-blur text-white text-xs font-medium shadow-2xl animate-fade-in">
-          <span>
-            {drawingState.currentPoints.length} pontos • Clique para adicionar • Pressione <b>Enter</b> ou clique no ponto inicial para fechar • <b>Esc</b> cancela
-          </span>
-        </div>
-      )}
     </div>
   );
 };
 
 /* ==========================================================================
-   CANVAS RENDERING SUB-ROUTINES
+   CANVAS RENDERING HELPERS (Appearance Engine)
    ========================================================================== */
 
 function drawAnnotation(
@@ -948,9 +785,18 @@ function drawAnnotation(
   scale: number,
   hoveredVertex: { annId: string; vertexIndex: number } | null
 ) {
-  const color = cls.color || '#3b82f6';
+  // Determine color based on Color By mode (Label / Instance / Group)
+  let color = cls.color || '#3b82f6';
+  if (filters.colorBy === 'instance') {
+    color = getInstanceColor(ann.id);
+  }
+
   const strokeWidth = (filters.strokeWidth || 2) / scale;
-  const opacityHex = Math.round((filters.annotationOpacity || 0.35) * 255)
+  const currentOpacity = isSelected 
+    ? (filters.selectedOpacity ?? 0.65) 
+    : (filters.annotationOpacity ?? 0.35);
+
+  const opacityHex = Math.round(Math.max(0, Math.min(1, currentOpacity)) * 255)
     .toString(16)
     .padStart(2, '0');
   const fillColor = `${color}${opacityHex}`;
@@ -974,9 +820,8 @@ function drawAnnotation(
     }
     ctx.closePath();
     ctx.fill();
-    ctx.stroke();
+    if (filters.outlinedBorders !== false) ctx.stroke();
 
-    // Render vertices
     ann.points.forEach((p, idx) => {
       const isVertexHovered = hoveredVertex?.annId === ann.id && hoveredVertex?.vertexIndex === idx;
       ctx.fillStyle = isVertexHovered ? '#10b981' : (isSelected ? '#ffffff' : color);
@@ -994,7 +839,7 @@ function drawAnnotation(
   if (ann.type === 'bbox' && ann.points.length >= 2) {
     const box = getBoundingBox(ann.points, 'bbox');
     ctx.fillRect(box.x, box.y, box.width, box.height);
-    ctx.strokeRect(box.x, box.y, box.width, box.height);
+    if (filters.outlinedBorders !== false) ctx.strokeRect(box.x, box.y, box.width, box.height);
 
     if (isSelected) {
       const handles = getBBoxHandles(box);
@@ -1023,10 +868,6 @@ function drawAnnotation(
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2 / scale;
     ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 12 / scale, 0, Math.PI * 2);
-    ctx.stroke();
   }
 
   // 4. POLYLINE
@@ -1037,17 +878,6 @@ function drawAnnotation(
       ctx.lineTo(ann.points[i].x, ann.points[i].y);
     }
     ctx.stroke();
-
-    ann.points.forEach((p, idx) => {
-      const isVertexHovered = hoveredVertex?.annId === ann.id && hoveredVertex?.vertexIndex === idx;
-      ctx.fillStyle = isVertexHovered ? '#10b981' : '#ffffff';
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2 / scale;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, (isVertexHovered ? 6.5 : 4) / scale, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    });
   }
 
   // 5. CIRCLE
@@ -1057,14 +887,7 @@ function drawAnnotation(
     ctx.beginPath();
     ctx.arc(center.x, center.y, r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.stroke();
-
-    // Center point & radius handle
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(center.x, center.y, (isSelected ? 5 : 3.5) / scale, 0, Math.PI * 2);
-    ctx.arc(ann.points[1].x, ann.points[1].y, (isSelected ? 5 : 3.5) / scale, 0, Math.PI * 2);
-    ctx.fill();
+    if (filters.outlinedBorders !== false) ctx.stroke();
   }
 
   // 6. LABEL BADGE
@@ -1108,85 +931,40 @@ function drawInProgressShape(
   ctx: CanvasRenderingContext2D,
   tool: ToolType,
   state: DrawingState,
-  activeClass: DatasetClass,
+  cls: DatasetClass,
   scale: number
 ) {
-  const color = activeClass.color || '#3b82f6';
+  const color = cls.color || '#3b82f6';
   ctx.save();
   ctx.strokeStyle = color;
   ctx.fillStyle = `${color}40`;
   ctx.lineWidth = 2 / scale;
+  ctx.setLineDash([4 / scale, 4 / scale]);
 
-  if (tool === 'polygon') {
-    const points = state.currentPoints;
-    const cursor = state.cursorPoint;
-
-    if (points.length > 0) {
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-      }
-      if (cursor) {
-        ctx.lineTo(cursor.x, cursor.y);
-      }
-      ctx.stroke();
-
-      points.forEach((p, idx) => {
-        ctx.fillStyle = idx === 0 ? '#10b981' : '#ffffff';
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2 / scale;
-        ctx.beginPath();
-        const r = (idx === 0 ? 7 : 4) / scale;
-        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      });
-
-      if (cursor && points.length >= 3 && distance(cursor, points[0]) <= 14 / scale) {
-        ctx.strokeStyle = '#10b981';
-        ctx.lineWidth = 3 / scale;
-        ctx.beginPath();
-        ctx.arc(points[0].x, points[0].y, 10 / scale, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-    }
-  } else if (tool === 'polyline') {
-    const points = state.currentPoints;
-    const cursor = state.cursorPoint;
-    if (points.length > 0) {
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-      }
-      if (cursor) {
-        ctx.lineTo(cursor.x, cursor.y);
-      }
-      ctx.stroke();
-      points.forEach((p) => {
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 4 / scale, 0, Math.PI * 2);
-        ctx.fill();
-      });
-    }
-  } else if (tool === 'bbox' && state.startPoint && state.cursorPoint) {
-    const p1 = state.startPoint;
-    const p2 = state.cursorPoint;
-    const minX = Math.min(p1.x, p2.x);
-    const minY = Math.min(p1.y, p2.y);
-    const w = Math.abs(p2.x - p1.x);
-    const h = Math.abs(p2.y - p1.y);
-
-    ctx.fillRect(minX, minY, w, h);
-    ctx.strokeRect(minX, minY, w, h);
+  if ((tool === 'bbox' || tool === 'cuboid3d') && state.startPoint && state.cursorPoint) {
+    const x = Math.min(state.startPoint.x, state.cursorPoint.x);
+    const y = Math.min(state.startPoint.y, state.cursorPoint.y);
+    const w = Math.abs(state.cursorPoint.x - state.startPoint.x);
+    const h = Math.abs(state.cursorPoint.y - state.startPoint.y);
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x, y, w, h);
   } else if (tool === 'circle' && state.startPoint && state.cursorPoint) {
-    const center = state.startPoint;
-    const r = distance(center, state.cursorPoint);
+    const r = distance(state.startPoint, state.cursorPoint);
     ctx.beginPath();
-    ctx.arc(center.x, center.y, r, 0, Math.PI * 2);
+    ctx.arc(state.startPoint.x, state.startPoint.y, r, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
+  } else if ((tool === 'polygon' || tool === 'polyline') && state.currentPoints.length > 0) {
+    ctx.beginPath();
+    ctx.moveTo(state.currentPoints[0].x, state.currentPoints[0].y);
+    for (let i = 1; i < state.currentPoints.length; i++) {
+      ctx.lineTo(state.currentPoints[i].x, state.currentPoints[i].y);
+    }
+    if (state.cursorPoint) ctx.lineTo(state.cursorPoint.x, state.cursorPoint.y);
+    if (tool === 'polygon') {
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.stroke();
   }
 

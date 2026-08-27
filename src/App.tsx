@@ -32,7 +32,14 @@ import {
 import { ToolType, CanvasTransform, ImageFilters } from './types/canvas';
 import { createSampleDataset } from './utils/sampleDatasets';
 import { saveProjectToStorage, loadProjectFromStorage } from './utils/storage';
-import { computeConvexHull } from './utils/geometry';
+import { computeConvexHull, mergeAnnotations } from './utils/geometry';
+import { 
+  autoClassifyAnnotation, 
+  copyAnnotationsToClipboard, 
+  getAnnotationClipboard, 
+  hasAnnotationClipboard, 
+  propagateAnnotationsToTargetImage 
+} from './utils/autoClassifier';
 import { getImageDimensions } from './utils/zipHandler';
 
 export const App: React.FC = () => {
@@ -47,6 +54,7 @@ export const App: React.FC = () => {
   const [activeClassId, setActiveClassId] = useState<string>(() => currentProject.classes[0]?.id || 'cls_1');
   const [activeTool, setActiveTool] = useState<ToolType>('polygon');
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+  const [selectedAnnotationIds, setSelectedAnnotationIds] = useState<string[]>([]);
   const [sidebarTab, setSidebarTab] = useState<'annotations' | 'classes' | 'stats'>('classes');
 
   // 2. Canvas Transform & Filters
@@ -63,8 +71,13 @@ export const App: React.FC = () => {
     invert: false,
     showGrid: false,
     showCrosshair: true,
+    colorBy: 'label',
     annotationOpacity: 0.35,
+    selectedOpacity: 0.65,
+    outlinedBorders: true,
     strokeWidth: 2,
+    showBitmap: false,
+    showProjections: false,
     showLabels: true,
     showPoints: true,
   });
@@ -278,7 +291,114 @@ export const App: React.FC = () => {
     }
   };
 
-  /* Annotation Handlers */
+  /* Multi-Selection & Annotation Handlers */
+  const handleSelectAnnotation = (id: string | null, multi = false) => {
+    if (id === null) {
+      setSelectedAnnotationId(null);
+      setSelectedAnnotationIds([]);
+      return;
+    }
+
+    if (multi) {
+      setSelectedAnnotationIds((prev) => {
+        const next = prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
+        setSelectedAnnotationId(next[0] || null);
+        return next;
+      });
+    } else {
+      setSelectedAnnotationId(id);
+      setSelectedAnnotationIds([id]);
+    }
+  };
+
+  const handleMergeAnnotations = (idsToMerge?: string[], targetClassId?: string) => {
+    if (!activeImage) return;
+    const targetIds = idsToMerge && idsToMerge.length >= 2 ? idsToMerge : selectedAnnotationIds;
+    if (targetIds.length < 2) return;
+
+    const annsToMerge = activeImage.annotations.filter((a) => targetIds.includes(a.id));
+    const merged = mergeAnnotations(annsToMerge, targetClassId);
+    if (!merged) return;
+
+    const remainingAnns = activeImage.annotations.filter((a) => !targetIds.includes(a.id));
+    const updatedAnns = [...remainingAnns, merged];
+
+    updateProject((prev) => ({
+      ...prev,
+      images: prev.images.map((img) =>
+        img.id === activeImage.id ? { ...img, annotations: updatedAnns } : img
+      ),
+    }));
+
+    handleSelectAnnotation(merged.id);
+  };
+
+  const handleAutoClassify = () => {
+    if (!activeImage || !activeImage.annotations.length) return;
+
+    const updatedAnns = activeImage.annotations.map((ann) => {
+      const suggestedClassId = autoClassifyAnnotation(
+        ann,
+        currentProject.classes,
+        activeImage.width,
+        activeImage.height
+      );
+      return { ...ann, classId: suggestedClassId };
+    });
+
+    updateProject((prev) => ({
+      ...prev,
+      images: prev.images.map((img) =>
+        img.id === activeImage.id ? { ...img, annotations: updatedAnns } : img
+      ),
+    }));
+  };
+
+  const handlePropagateToNext = () => {
+    if (!activeImage || !activeImage.annotations.length || !currentProject.images.length) return;
+    const currentIdx = currentProject.images.findIndex((img) => img.id === activeImage.id);
+    if (currentIdx === -1) return;
+
+    const nextIdx = (currentIdx + 1) % currentProject.images.length;
+    const nextImg = currentProject.images[nextIdx];
+    if (!nextImg || nextImg.id === activeImage.id) return;
+
+    const updatedNext = propagateAnnotationsToTargetImage(activeImage.annotations, nextImg);
+
+    updateProject((prev) => ({
+      ...prev,
+      images: prev.images.map((img) => (img.id === nextImg.id ? updatedNext : img)),
+      activeImageId: nextImg.id,
+    }));
+  };
+
+  const handleCopyAnnotations = () => {
+    if (!activeImage) return;
+    const annsToCopy = selectedAnnotationIds.length > 0
+      ? activeImage.annotations.filter((a) => selectedAnnotationIds.includes(a.id))
+      : activeImage.annotations;
+
+    if (annsToCopy.length > 0) {
+      copyAnnotationsToClipboard(annsToCopy);
+    }
+  };
+
+  const handlePasteAnnotations = () => {
+    if (!activeImage || !hasAnnotationClipboard()) return;
+    const pasted = getAnnotationClipboard();
+    const updatedAnns = [...activeImage.annotations, ...pasted];
+
+    updateProject((prev) => ({
+      ...prev,
+      images: prev.images.map((img) =>
+        img.id === activeImage.id ? { ...img, annotations: updatedAnns, status: 'completed' } : img
+      ),
+    }));
+
+    setSelectedAnnotationIds(pasted.map((p) => p.id));
+    setSelectedAnnotationId(pasted[0]?.id || null);
+  };
+
   const handleAddAnnotation = (ann: Annotation) => {
     if (!activeImage) return;
     const updatedAnns = [...activeImage.annotations, ann];
@@ -288,7 +408,7 @@ export const App: React.FC = () => {
         img.id === activeImage.id ? { ...img, annotations: updatedAnns, status: 'completed' } : img
       ),
     }));
-    setSelectedAnnotationId(ann.id);
+    handleSelectAnnotation(ann.id);
   };
 
   const handleUpdateAnnotation = (ann: Annotation) => {
@@ -307,6 +427,7 @@ export const App: React.FC = () => {
       ...prev,
       images: prev.images.map((img) => (img.id === activeImage.id ? { ...img, annotations: updatedAnns } : img)),
     }));
+    setSelectedAnnotationIds((prev) => prev.filter((item) => item !== id));
     if (selectedAnnotationId === id) setSelectedAnnotationId(null);
   };
 
@@ -316,6 +437,7 @@ export const App: React.FC = () => {
       activeImageId: id,
     }));
     setSelectedAnnotationId(null);
+    setSelectedAnnotationIds([]);
   };
 
   const handleConvexHull = () => {
@@ -424,15 +546,25 @@ export const App: React.FC = () => {
                 setRedoStack((r) => r.slice(0, -1));
                 setProjects((all) => all.map((p) => (p.id === next.id ? next : p)));
               }}
-              hasSelection={!!selectedAnnotationId}
+              hasSelection={selectedAnnotationIds.length > 0 || !!selectedAnnotationId}
               onDeleteSelected={() => {
-                if (selectedAnnotationId) handleDeleteAnnotation(selectedAnnotationId);
+                if (selectedAnnotationIds.length > 0) {
+                  selectedAnnotationIds.forEach(id => handleDeleteAnnotation(id));
+                } else if (selectedAnnotationId) {
+                  handleDeleteAnnotation(selectedAnnotationId);
+                }
               }}
               onConvexHull={handleConvexHull}
               onFitScreen={() => setTransform({ scale: 0.95, offsetX: 0, offsetY: 0 })}
               onOpenExportModal={() => setIsExportOpen(true)}
               onOpenVideoStudio={() => setIsVideoStudioOpen(true)}
               onOpenAddImages={() => quickFileInputRef.current?.click()}
+              onAutoClassify={handleAutoClassify}
+              onCopyAnnotations={handleCopyAnnotations}
+              onPasteAnnotations={handlePasteAnnotations}
+              onPropagateToNext={handlePropagateToNext}
+              onMergeSelected={handleMergeAnnotations}
+              canMerge={selectedAnnotationIds.length >= 2}
             />
 
             {/* Hidden Input for Quick Image Add */}
@@ -453,10 +585,13 @@ export const App: React.FC = () => {
                 activeClassId={activeClassId}
                 activeTool={activeTool}
                 selectedAnnotationId={selectedAnnotationId}
-                onSelectAnnotation={setSelectedAnnotationId}
+                selectedAnnotationIds={selectedAnnotationIds}
+                onSelectAnnotation={handleSelectAnnotation}
                 onAddAnnotation={handleAddAnnotation}
                 onUpdateAnnotation={handleUpdateAnnotation}
                 onDeleteAnnotation={handleDeleteAnnotation}
+                onMergeAnnotations={handleMergeAnnotations}
+                onPropagateToNext={handlePropagateToNext}
                 transform={transform}
                 onTransformChange={setTransform}
                 filters={filters}
@@ -469,6 +604,8 @@ export const App: React.FC = () => {
                 onTransformChange={setTransform}
                 onFiltersChange={setFilters}
                 onFitScreen={() => setTransform({ scale: 0.95, offsetX: 0, offsetY: 0 })}
+                canMerge={selectedAnnotationIds.length >= 2}
+                onMergeSelected={handleMergeAnnotations}
               />
 
               {/* Bottom Image Filmstrip */}
@@ -559,10 +696,12 @@ export const App: React.FC = () => {
                     image={activeImage}
                     classes={currentProject.classes}
                     selectedAnnotationId={selectedAnnotationId}
-                    onSelectAnnotation={setSelectedAnnotationId}
+                    selectedAnnotationIds={selectedAnnotationIds}
+                    onSelectAnnotation={handleSelectAnnotation}
                     onUpdateAnnotation={handleUpdateAnnotation}
                     onDeleteAnnotation={handleDeleteAnnotation}
                     onAddAnnotation={handleAddAnnotation}
+                    onMergeAnnotations={handleMergeAnnotations}
                     onUpdateImageTags={(tags) => {
                       if (!activeImage) return;
                       updateProject((prev) => ({

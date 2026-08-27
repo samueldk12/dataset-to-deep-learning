@@ -8,6 +8,7 @@ import {
   findNearbyVertexIndex,
   findClosestEdge,
   findBBoxHandle,
+  mergeAnnotations,
 } from '../utils/geometry';
 import { Point } from '../types/dataset';
 
@@ -184,6 +185,56 @@ describe('Geometry Utilities (Unit Tests)', () => {
       expect(findBBoxHandle({ x: 150, y: 100 }, box, 6)).toBe('e');
       expect(findBBoxHandle({ x: 100, y: 150 }, box, 6)).toBe('s');
       expect(findBBoxHandle({ x: 50, y: 100 }, box, 6)).toBe('w');
+    });
+  });
+
+  describe('mergeAnnotations', () => {
+    it('merges 2 bounding boxes into a unified bounding box', () => {
+      const b1: any = {
+        id: '1',
+        type: 'bbox',
+        classId: 'cls_car',
+        points: [{ x: 10, y: 10 }, { x: 50, y: 50 }],
+      };
+      const b2: any = {
+        id: '2',
+        type: 'bbox',
+        classId: 'cls_car',
+        points: [{ x: 40, y: 40 }, { x: 100, y: 120 }],
+      };
+
+      const merged = mergeAnnotations([b1, b2]);
+      expect(merged).not.toBeNull();
+      expect(merged?.type).toBe('bbox');
+      expect(merged?.points).toEqual([
+        { x: 10, y: 10 },
+        { x: 100, y: 120 },
+      ]);
+    });
+
+    it('merges 2 polygons into a convex hull polygon', () => {
+      const p1: any = {
+        id: 'p1',
+        type: 'polygon',
+        classId: 'cls_person',
+        points: [{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 50 }, { x: 0, y: 50 }],
+      };
+      const p2: any = {
+        id: 'p2',
+        type: 'polygon',
+        classId: 'cls_person',
+        points: [{ x: 60, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 60, y: 50 }],
+      };
+
+      const merged = mergeAnnotations([p1, p2]);
+      expect(merged).not.toBeNull();
+      expect(merged?.type).toBe('polygon');
+      expect(merged?.points.length).toBeGreaterThanOrEqual(4);
+    });
+
+    it('returns null if fewer than 2 annotations are provided', () => {
+      expect(mergeAnnotations([])).toBeNull();
+      expect(mergeAnnotations([{ id: '1', type: 'bbox', points: [], classId: '1' } as any])).toBeNull();
     });
   });
 });

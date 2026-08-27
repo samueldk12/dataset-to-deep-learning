@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { DatasetProject, ExportFormat, DatasetImage, Annotation, DatasetClass, ClassSet } from '../types/dataset';
-import { exportToCOCO, exportImageToYOLO, generateYOLODataYaml, generateClassesTxt, exportImageToPascalVOC, exportToCSV, parseCOCO, parseYOLOLine, parsePascalVOC } from './formatParsers';
+import { exportToCOCO, exportImageToYOLO, generateYOLODataYaml, generateConfigYaml, generateClassesTxt, exportImageToPascalVOC, exportToCSV, parseCOCO, parseYOLOLine, parsePascalVOC } from './formatParsers';
 
 export interface ExportZipOptions {
   format: ExportFormat;
@@ -102,14 +102,14 @@ async function populateZipWithProject(
 ): Promise<void> {
   const total = project.images.length;
   const classMap = new Map<string, number>();
-  project.classes.forEach((c, idx) => classMap.set(c.id, idx));
+  // Always include config.yaml and data.yaml at root by default
+  root.file('config.yaml', generateConfigYaml(project));
+  root.file('data.yaml', generateYOLODataYaml(project));
+  root.file('classes.txt', generateClassesTxt(project.classes));
 
   if (format === 'yolo') {
     const imagesFolder = root.folder('images')!;
     const labelsFolder = root.folder('labels')!;
-
-    root.file('data.yaml', generateYOLODataYaml(project));
-    root.file('classes.txt', generateClassesTxt(project.classes));
 
     for (let i = 0; i < project.images.length; i++) {
       const img = project.images[i];

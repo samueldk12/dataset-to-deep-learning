@@ -16,7 +16,6 @@ CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 TEMP_DIR = os.path.join(tempfile.gettempdir(), 'annotatex_videos')
 os.makedirs(TEMP_DIR, exist_ok=True)
 
-# Global CORS preflight handler to guarantee 200 OK for any OPTIONS request
 @app.before_request
 def handle_preflight():
     if request.method == 'OPTIONS':
@@ -45,13 +44,32 @@ def handle_404(e):
 def handle_500(e):
     return jsonify({'error': f'Erro interno do servidor: {str(e)}'}), 500
 
+from mcp_server import handle_mcp_request, MCP_TOOLS
+
 @app.route('/api/health', methods=['GET', 'OPTIONS'])
 def health():
     return jsonify({
         'status': 'online',
         'service': 'AnnotateX Python Video & Stream Server',
         'yt_dlp_version': yt_dlp.version.__version__,
+        'mcp_enabled': True,
     })
+
+@app.route('/api/mcp', methods=['GET', 'POST', 'OPTIONS'])
+def mcp_endpoint():
+    """
+    Model Context Protocol (MCP) HTTP / JSON-RPC endpoint.
+    Allows LLM agents to inspect tools and execute dataset operations over HTTP.
+    """
+    if request.method == 'GET':
+        return jsonify({
+            'status': 'online',
+            'mcp_version': '2024-11-05',
+            'tools': MCP_TOOLS,
+        })
+    data = request.get_json(silent=True) or {}
+    response = handle_mcp_request(data)
+    return jsonify(response)
 
 @app.route('/api/extract-youtube', methods=['POST', 'OPTIONS'])
 def extract_youtube():
@@ -59,13 +77,13 @@ def extract_youtube():
     Downloads or extracts direct video streaming info from YouTube, Reddit or any URL using yt-dlp.
     Returns direct stream URL and metadata.
     """
-    data = request.get_json() or {}
-    url = data.get('url', '').strip()
+    data = request.get_json(silent=True) or request.args or {}
+    url = (data.get('url') or data.get('video_url') or data.get('link') or '').strip()
     if not url:
         return jsonify({'error': 'URL de vídeo é obrigatória'}), 400
 
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]/best',
+        'format': 'bestvideo*+bestaudio/best',
         'quiet': True,
         'no_warnings': True,
         'extract_flat': False,
@@ -76,14 +94,12 @@ def extract_youtube():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             video_url = info.get('url')
-            # If formats list is available, pick best playable mp4
+            # If formats list is available, pick best playable format
             if not video_url and 'formats' in info:
                 for f in reversed(info['formats']):
-                    if f.get('ext') == 'mp4' and f.get('url'):
+                    if f.get('url'):
                         video_url = f['url']
                         break
-                if not video_url:
-                    video_url = info['formats'][-1].get('url')
 
             return jsonify({
                 'success': True,
@@ -104,8 +120,8 @@ def download_and_extract_frames():
     Downloads a video from YouTube/URL, extracts frames with OpenCV at exact sample intervals/FPS,
     and returns base64 image frames to eliminate CORS and browser sandbox issues.
     """
-    data = request.get_json() or {}
-    url = data.get('url', '').strip()
+    data = request.get_json(silent=True) or request.args or {}
+    url = (data.get('url') or data.get('video_url') or data.get('link') or '').strip()
     interval_sec = float(data.get('intervalSec') or data.get('interval') or 2.0)
     max_frames = int(data.get('maxFrames') or data.get('totalFrames') or data.get('totalCount') or 30)
 
@@ -115,7 +131,7 @@ def download_and_extract_frames():
     temp_video_path = os.path.join(TEMP_DIR, f'temp_video_{os.getpid()}_{int(cv2.getTickCount())}.mp4')
 
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4][height<=720]/best[ext=mp4][height<=720]/best',
+        'format': 'bestvideo*+bestaudio/best',
         'outtmpl': temp_video_path,
         'quiet': True,
         'no_warnings': True,
@@ -183,20 +199,22 @@ def download_and_extract_frames():
             os.remove(temp_video_path)
         return jsonify({'error': f'Erro na extração de frames: {str(e)}'}), 500
 
-@app.route('/api/live-stream-snapshot', methods=['POST', 'OPTIONS'])
+@app.route('/api/live-stream-snapshot', methods=['GET', 'POST', 'OPTIONS'])
+@app.route('/api/live_raw_snapshot', methods=['GET', 'POST', 'OPTIONS'])
 def live_stream_snapshot():
     """
     Captures a high-resolution snapshot from RTSP, HLS, or YouTube Live stream.
     """
-    data = request.get_json() or {}
-    stream_url = data.get('streamUrl', '').strip()
-    if not stream_url:
-        return jsonify({'error': 'URL do stream ao vivo é obrigatória'}), 400
+    data = request.get_json(silent=True) or request.args or {}
+    stream_url = (data.get('streamUrl') or data.get('stream_url') or data.get('url') or '').strip()
+    
+    # If no stream URL is passed, try default webcam (device 0)
+    target = stream_url if stream_url else 0
 
     try:
-        cap = cv2.VideoCapture(stream_url)
+        cap = cv2.VideoCapture(target)
         if not cap.isOpened():
-            return jsonify({'error': 'Não foi possível conectar ao stream de vídeo ao vivo'}), 500
+            return jsonify({'error': 'Não foi possível conectar à câmera ou stream ao vivo'}), 500
 
         ret, frame = cap.read()
         cap.release()
