@@ -43,6 +43,7 @@ interface NLPWorkspaceProps {
   activeClassId: string;
   onUpdateProject: (updated: DatasetProject) => void;
   onOpenExportModal?: () => void;
+  onOpenNewDatasetModal?: (domain?: any, task?: any) => void;
 }
 
 export const NLPWorkspace: React.FC<NLPWorkspaceProps> = ({
@@ -50,6 +51,7 @@ export const NLPWorkspace: React.FC<NLPWorkspaceProps> = ({
   activeClassId,
   onUpdateProject,
   onOpenExportModal,
+  onOpenNewDatasetModal,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<string>(project.taskType || 'extractive_qa');
   const [search, setSearch] = useState('');
@@ -262,77 +264,82 @@ export const NLPWorkspace: React.FC<NLPWorkspaceProps> = ({
   return (
     <div className="flex flex-1 h-full overflow-hidden bg-[#0a0d14] text-slate-100 select-none">
       {/* 1. Left Paradigm Mode Sidebar */}
-      <div className="w-60 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 justify-between">
+      <div className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 justify-between">
         <div>
-          <div className="p-3 border-b border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <FileText className="w-4 h-4 text-slate-300" />
-              <span className="font-semibold text-xs text-slate-200">Processamento de Texto</span>
+          {/* Paradigm Header */}
+          <div className="p-3.5 border-b border-slate-800 bg-slate-950/50">
+            <div className="flex items-center gap-2.5 mb-1.5">
+              <div className="p-2 rounded-xl bg-purple-600/20 text-purple-400 border border-purple-500/30">
+                {activeSubTab === 'text_to_sql' && <Terminal className="w-4 h-4" />}
+                {activeSubTab === 'chain_of_thought' && <Brain className="w-4 h-4" />}
+                {activeSubTab === 'function_calling' && <Wrench className="w-4 h-4" />}
+                {activeSubTab === 'rag_retrieval' && <Database className="w-4 h-4" />}
+                {(activeSubTab === 'extractive_qa' || !['text_to_sql', 'chain_of_thought', 'function_calling', 'rag_retrieval'].includes(activeSubTab)) && <Highlighter className="w-4 h-4" />}
+              </div>
+              <div className="flex flex-col">
+                <span className="font-bold text-xs text-white">
+                  {
+                    activeSubTab === 'text_to_sql' ? 'Text-to-SQL / Código' :
+                    activeSubTab === 'chain_of_thought' ? 'Raciocínio & CoT' :
+                    activeSubTab === 'function_calling' ? 'Tool Use / Agentes' :
+                    activeSubTab === 'rag_retrieval' ? 'RAG Triplet Retrieval' :
+                    'Extractive QA (SQuAD)'
+                  }
+                </span>
+                <span className="text-[10px] text-purple-300 font-medium">Paradigma deste Dataset</span>
+              </div>
             </div>
-          </div>
-
-          {/* Paradigm Subtabs */}
-          <div className="p-2 flex flex-col gap-1 text-xs">
-            {[
-              { id: 'extractive_qa', label: 'Extractive QA (SQuAD)', icon: Highlighter, count: qaItems.length },
-              { id: 'text_to_sql', label: 'Text-to-SQL / Código', icon: Terminal, count: sqlItems.length },
-              { id: 'chain_of_thought', label: 'Raciocínio & CoT', icon: Brain, count: cotItems.length },
-              { id: 'function_calling', label: 'Tool Use / Agentes', icon: Wrench, count: toolCallItems.length },
-              { id: 'rag_retrieval', label: 'RAG Triplet Retrieval', icon: Database, count: ragItems.length },
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const isSelected = activeSubTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveSubTab(tab.id)}
-                  className={`p-2 rounded-lg text-left font-medium flex items-center justify-between transition-colors ${
-                    isSelected
-                      ? 'bg-slate-800 text-white font-semibold'
-                      : 'hover:bg-slate-800/60 text-slate-400'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 truncate">
-                    <Icon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span className="truncate">{tab.label}</span>
-                  </div>
-                  <span className="text-[10px] font-mono text-slate-400 bg-slate-950 px-1.5 py-0.2 rounded">
-                    {tab.count}
-                  </span>
-                </button>
-              );
-            })}
+            <p className="text-[11px] text-slate-400 leading-relaxed mt-1">
+              {
+                activeSubTab === 'text_to_sql' ? 'Pares de instrução em linguagem natural e consultas SQL / código executável.' :
+                activeSubTab === 'chain_of_thought' ? 'Instruções complexas com raciocínio lógico estruturado passo a passo.' :
+                activeSubTab === 'function_calling' ? 'Definição de ferramentas e chamadas de funções JSON estruturadas.' :
+                activeSubTab === 'rag_retrieval' ? 'Triplets de Query, Documento de Contexto Relevante e Resposta.' :
+                'Documentos de contexto com perguntas e spans de resposta exatos destacados.'
+              }
+            </p>
           </div>
 
           {/* Gemini AI Synthesis Button */}
-          <div className="px-2 pt-2">
+          <div className="p-3">
             <button
               onClick={() => setIsGeminiModalOpen(true)}
-              className="w-full p-2.5 rounded-xl bg-gradient-to-r from-purple-600/30 to-blue-600/30 hover:from-purple-600/40 hover:to-blue-600/40 border border-purple-500/40 text-purple-300 font-semibold flex items-center justify-between text-xs transition-all shadow-md"
+              className="w-full p-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 border border-purple-500/40 hover:border-purple-400 text-purple-200 font-semibold flex items-center justify-between text-xs transition-all shadow-lg shadow-purple-950/20 active:scale-98"
+              title="Sintetizar e gerar amostras com Google Gemini Flash"
             >
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-400" />
-                <span>Gemini Flash IA</span>
+                <Sparkles className="w-4 h-4 text-purple-400 fill-purple-400/20" />
+                <span>Sintetizar com Gemini Flash</span>
               </div>
-              <span className="text-[9px] bg-purple-500/30 text-purple-200 px-1.5 py-0.5 rounded font-mono">
-                Sintetizar
+              <span className="text-[10px] bg-purple-600/30 text-purple-300 border border-purple-500/30 px-1.5 py-0.5 rounded font-mono">
+                IA
               </span>
             </button>
           </div>
         </div>
 
-        {/* Export Button */}
-        {onOpenExportModal && (
-          <div className="p-3 border-t border-slate-800 bg-slate-950/60">
+        {/* Footer Actions */}
+        <div className="p-3 border-t border-slate-800 bg-slate-950/60 flex flex-col gap-2">
+          {onOpenNewDatasetModal && (
+            <button
+              onClick={() => onOpenNewDatasetModal('nlp')}
+              className="w-full py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors border border-dashed border-slate-800"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Criar Dataset de Outro Formato</span>
+            </button>
+          )}
+
+          {onOpenExportModal && (
             <button
               onClick={onOpenExportModal}
-              className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium text-xs flex items-center justify-center gap-2 transition-colors"
+              className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs flex items-center justify-center gap-2 transition-colors shadow-sm"
             >
-              <Download className="w-3.5 h-3.5 text-slate-400" />
+              <Download className="w-3.5 h-3.5" />
               <span>Exportar Dataset</span>
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* 2. Main Studio Viewport */}

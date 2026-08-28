@@ -777,6 +777,11 @@ export const App: React.FC = () => {
             activeClassId={activeClassId}
             onUpdateProject={(updated) => updateProject(updated)}
             onOpenExportModal={() => setIsExportOpen(true)}
+            onOpenNewDatasetModal={(domain, taskType) => {
+              setNewDatasetModalDomain(domain || 'nlp');
+              setNewDatasetModalTask(taskType);
+              setIsNewDatasetModalOpen(true);
+            }}
           />
         )}
 

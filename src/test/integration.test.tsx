@@ -32,10 +32,8 @@ describe('AnnotateX Studio (Integration Tests)', () => {
     // Create the NLP dataset
     const createBtn = screen.getByRole('button', { name: /Criar Dataset/i });
     fireEvent.click(createBtn);
-    expect(screen.getByText(/Processamento de Texto/i)).toBeInTheDocument();
     expect(screen.getByText(/Extractive QA \(SQuAD\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Text-to-SQL \/ Código/i)).toBeInTheDocument();
-    expect(screen.getByText(/Raciocínio & CoT/i)).toBeInTheDocument();
+    expect(screen.getByText(/Sintetizar com Gemini Flash/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Exportar Dataset/i })).toBeInTheDocument();
   });
 

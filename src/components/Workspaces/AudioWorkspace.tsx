@@ -261,45 +261,41 @@ export const AudioWorkspace: React.FC<AudioWorkspaceProps> = ({
                 </div>
               </div>
 
-              {/* Paradigm Selector Pills & Gemini Assistant */}
-              <div className="flex items-center gap-2">
+              {/* Dedicated Dataset Paradigm & Gemini Assistant */}
+              <div className="flex items-center gap-3">
                 <button
                   onClick={handleGeminiTranscribe}
                   disabled={isGeminiProcessing}
-                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow-md shadow-purple-600/20 transition-all disabled:opacity-50"
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-purple-200 border border-purple-500/40 hover:border-purple-400 font-semibold text-xs flex items-center gap-2 shadow-lg shadow-purple-950/30 transition-all active:scale-98 disabled:opacity-50"
                   title="Transcrever e anotar automaticamente usando Google Gemini Flash"
                 >
                   {isGeminiProcessing ? (
                     <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <RefreshCw className="w-3.5 h-3.5 text-purple-400 animate-spin" />
                       <span>Analisando com Gemini...</span>
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-                      <span>Auto-Anotar com Gemini</span>
+                      <Sparkles className="w-3.5 h-3.5 text-purple-400 fill-purple-400/20" />
+                      <span>Auto-Anotar com Gemini Flash</span>
                     </>
                   )}
                 </button>
 
-                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
-                  {[
-                    { id: 'speech_recognition_asr', label: 'ASR (Transcrição)', icon: Mic },
-                    { id: 'speaker_diarization', label: 'Diarização de Locutores', icon: Users },
-                    { id: 'sound_event_detection', label: 'Eventos Sonoros (SED)', icon: Radio },
-                    { id: 'forced_alignment', label: 'Alinhamento Forçado', icon: Clock },
-                  ].map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => setActiveSubTab(t.id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
-                        activeSubTab === t.id ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <t.icon className="w-3.5 h-3.5" />
-                      <span>{t.label}</span>
-                    </button>
-                  ))}
+                {/* Active Dataset Paradigm Badge */}
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-emerald-400">
+                  {activeSubTab === 'speaker_diarization' && <Users className="w-3.5 h-3.5" />}
+                  {activeSubTab === 'sound_event_detection' && <Radio className="w-3.5 h-3.5" />}
+                  {activeSubTab === 'forced_alignment' && <Clock className="w-3.5 h-3.5" />}
+                  {(activeSubTab === 'speech_recognition_asr' || !['speaker_diarization', 'sound_event_detection', 'forced_alignment'].includes(activeSubTab)) && <Mic className="w-3.5 h-3.5" />}
+                  <span>
+                    Formato: {
+                      activeSubTab === 'speaker_diarization' ? 'Diarização de Locutores' :
+                      activeSubTab === 'sound_event_detection' ? 'Eventos Sonoros (SED)' :
+                      activeSubTab === 'forced_alignment' ? 'Alinhamento Forçado' :
+                      'ASR (Transcrição de Fala)'
+                    }
+                  </span>
                 </div>
               </div>
             </div>
