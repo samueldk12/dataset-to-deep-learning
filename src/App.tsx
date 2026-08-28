@@ -16,6 +16,7 @@ import { VideoImportModal } from './components/Modals/VideoImportModal';
 import { NewDatasetModal } from './components/Modals/NewDatasetModal';
 import { AIAnnotationModal } from './components/Modals/AIAnnotationModal';
 import { AugmentationModal } from './components/Modals/AugmentationModal';
+import { AISettingsModal } from './components/Modals/AISettingsModal';
 import { GeminiSettingsModal } from './components/Modals/GeminiSettingsModal';
 import { SidebarActionFooter } from './components/Sidebar/SidebarActionFooter';
 import { predictImageWithAI } from './utils/aiClient';
@@ -979,6 +980,7 @@ export const App: React.FC = () => {
         activeImage={activeImage}
         defaultModelId={defaultAIModelId}
         onModelChange={(id) => setDefaultAIModelId(id)}
+        onOpenAISettings={() => setIsGeminiSettingsOpen(true)}
         onApplyAnnotations={handleApplyAnnotations}
         onBatchApplyAnnotations={handleBatchApplyAnnotations}
       />
@@ -992,8 +994,8 @@ export const App: React.FC = () => {
         onApplyAugmentedImages={handleApplyAugmentedImages}
       />
 
-      {/* Google Gemini Settings Modal */}
-      <GeminiSettingsModal
+      {/* Universal AI Providers & API Keys Settings Modal */}
+      <AISettingsModal
         isOpen={isGeminiSettingsOpen}
         onClose={() => setIsGeminiSettingsOpen(false)}
       />

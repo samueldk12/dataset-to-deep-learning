@@ -13,7 +13,8 @@ import {
   RefreshCw,
   Box,
   Shapes,
-  UserCheck
+  UserCheck,
+  Key
 } from 'lucide-react';
 import { DatasetClass, DatasetImage, DatasetProject } from '../../types/dataset';
 import { AIModelInfo, AIPredictionConfig, AIModelType } from '../../types/aiModel';
@@ -26,6 +27,7 @@ interface AIAnnotationModalProps {
   activeImage: DatasetImage | null;
   defaultModelId?: AIModelType;
   onModelChange?: (id: AIModelType) => void;
+  onOpenAISettings?: () => void;
   onApplyAnnotations: (
     imageId: string,
     annotations: any[],
@@ -45,6 +47,7 @@ export const AIAnnotationModal: React.FC<AIAnnotationModalProps> = ({
   activeImage,
   defaultModelId = 'yolov11n',
   onModelChange,
+  onOpenAISettings,
   onApplyAnnotations,
   onBatchApplyAnnotations,
 }) => {
@@ -177,12 +180,28 @@ export const AIAnnotationModal: React.FC<AIAnnotationModalProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onOpenAISettings && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenAISettings();
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/30 text-xs font-semibold transition-colors"
+                title="Configurar Chaves de API para modelos online (Gemini, OpenAI, etc.)"
+              >
+                <Key className="w-3.5 h-3.5 text-yellow-400" />
+                <span>Chaves de API</span>
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Body */}

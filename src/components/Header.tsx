@@ -26,6 +26,7 @@ interface HeaderProps {
   onOpenAIModal?: () => void;
   onOpenAugmentationModal?: () => void;
   onOpenGeminiSettings?: () => void;
+  onOpenAISettings?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,6 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAIModal,
   onOpenAugmentationModal,
   onOpenGeminiSettings,
+  onOpenAISettings,
 }) => {
   const [hoveredDomain, setHoveredDomain] = useState<DomainCategory | null>(null);
   const [hoveredTaskPreview, setHoveredTaskPreview] = useState<TaskDefinition | null>(null);
@@ -456,14 +458,14 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        {onOpenGeminiSettings && (
+        {(onOpenAISettings || onOpenGeminiSettings) && (
           <button
-            onClick={onOpenGeminiSettings}
-            title="Google Gemini Flash • Gerador de Datasets de Texto e Áudio"
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gradient-to-r from-purple-600/30 to-blue-600/30 hover:from-purple-600/40 hover:to-blue-600/40 text-purple-300 border border-purple-500/40 text-xs font-semibold transition-all shadow-sm"
+            onClick={() => (onOpenAISettings ? onOpenAISettings() : onOpenGeminiSettings?.())}
+            title="Configurar Chaves de API de IA (Gemini, OpenAI, Anthropic, Groq, Ollama)"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gradient-to-r from-purple-600/30 to-blue-600/30 hover:from-purple-600/40 hover:to-blue-600/40 text-purple-200 border border-purple-500/40 text-xs font-semibold transition-all shadow-sm"
           >
             <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-            <span className="hidden sm:inline">Gemini Flash</span>
+            <span className="hidden sm:inline">Configurar IAs</span>
           </button>
         )}
 
