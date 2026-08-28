@@ -276,6 +276,53 @@ def live_stream_snapshot():
     except Exception as e:
         return jsonify({'error': f'Erro ao capturar snapshot ao vivo: {str(e)}'}), 500
 
+# ==============================================================================
+# Google Gemini 2.5 Flash Integration (NLP & Audio Dataset Synthesis)
+# ==============================================================================
+from gemini_service import call_gemini_api
+
+@app.route('/api/gemini/generate', methods=['POST', 'OPTIONS'])
+def gemini_generate():
+    """
+    Calls Google Gemini (defaults to lowest-cost gemini-2.5-flash-lite) for NLP and Audio generation.
+    """
+    data = request.get_json(silent=True) or {}
+    prompt = data.get('prompt', '')
+    model = data.get('model', 'gemini-2.5-flash-lite')
+    api_key = data.get('apiKey')
+    response_mime_type = data.get('responseMimeType', 'application/json')
+    audio_base64 = data.get('audioBase64')
+    audio_mime_type = data.get('audioMimeType', 'audio/wav')
+
+    if not prompt:
+        return jsonify({'error': 'Prompt é obrigatório'}), 400
+
+    result = call_gemini_api(
+        prompt=prompt,
+        model=model,
+        custom_api_key=api_key,
+        response_mime_type=response_mime_type,
+        audio_base64=audio_base64,
+        audio_mime_type=audio_mime_type
+    )
+
+    if not result.get('success'):
+        return jsonify({'error': result.get('error', 'Falha ao chamar API do Gemini')}), 500
+
+    return jsonify(result)
+
+@app.route('/api/gemini/test', methods=['POST', 'OPTIONS'])
+def gemini_test_connection():
+    data = request.get_json(silent=True) or {}
+    api_key = data.get('apiKey')
+    result = call_gemini_api(
+        prompt="Diga 'OK' em formato JSON: {\"status\": \"OK\"}",
+        model="gemini-2.5-flash-lite",
+        custom_api_key=api_key,
+        response_mime_type="application/json"
+    )
+    return jsonify(result)
+
 # Static SPA route handler
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')

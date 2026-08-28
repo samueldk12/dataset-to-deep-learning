@@ -21,6 +21,8 @@ import {
   Download
 } from 'lucide-react';
 import { DatasetProject, AudioDatasetItem } from '../../types/dataset';
+import { analyzeAudioWithGemini, generateSyntheticNLPData } from '../../utils/geminiClient';
+import { RefreshCw, Wand2 } from 'lucide-react';
 
 interface AudioWorkspaceProps {
   project: DatasetProject;
@@ -100,6 +102,71 @@ export const AudioWorkspace: React.FC<AudioWorkspaceProps> = ({
     onUpdateProject({ ...project, audioItems: updated });
   };
 
+  const [isGeminiProcessing, setIsGeminiProcessing] = useState(false);
+
+  const handleGeminiTranscribe = async () => {
+    if (!activeAudio) return;
+    setIsGeminiProcessing(true);
+    try {
+      const res = await analyzeAudioWithGemini(activeAudio.audioUrl, activeAudio.name);
+      const updated: AudioDatasetItem = {
+        ...activeAudio,
+        transcription: res.transcription || activeAudio.transcription,
+        label: res.label || activeAudio.label,
+        status: 'completed',
+        diarizationSegments: res.speakers?.map((s, idx) => ({
+          id: `seg_${idx}_${Date.now()}`,
+          start: s.start,
+          end: s.end,
+          speaker: s.speaker,
+          text: s.text,
+        })) || activeAudio.diarizationSegments,
+        soundEvents: res.soundEvents?.map((e, idx) => ({
+          id: `evt_${idx}_${Date.now()}`,
+          start: e.start,
+          end: e.end,
+          event: e.event,
+        })) || activeAudio.soundEvents,
+      };
+      handleUpdateActiveAudio(updated);
+    } catch (err) {
+      console.error('Error during Gemini audio analysis:', err);
+    } finally {
+      setIsGeminiProcessing(false);
+    }
+  };
+
+  const handleGeminiGenerateSyntheticAudio = async () => {
+    setIsGeminiProcessing(true);
+    try {
+      const results = await generateSyntheticNLPData(
+        'speech_recognition_asr',
+        'Gravações de Voz e Atendimento',
+        3
+      );
+      const newItems: AudioDatasetItem[] = results.map((r, idx) => ({
+        id: `aud_gemini_${Date.now()}_${idx}`,
+        name: `fala_sintetica_gemini_${audioItems.length + idx + 1}.wav`,
+        audioUrl: 'https://actions.google.com/sounds/v1/ambiences/outdoor_ambience.ogg',
+        durationSec: 8.5 + idx * 2,
+        transcription: r.context || r.text || r.question || 'Áudio sintético gerado com Gemini.',
+        status: 'completed',
+        diarizationSegments: [
+          { id: `d1_${idx}`, start: 0.0, end: 4.0, speaker: 'Orador 1', text: r.question || 'Primeira fala.' },
+          { id: `d2_${idx}`, start: 4.2, end: 8.0, speaker: 'Orador 2', text: r.answerText || r.response || 'Segunda fala.' },
+        ],
+        soundEvents: [{ id: `e1_${idx}`, start: 1.0, end: 2.5, event: 'voz_humana' }],
+        label: 'Voz_Sintetica_Gemini',
+      }));
+      onUpdateProject({ ...project, audioItems: [...audioItems, ...newItems] });
+      if (newItems[0]?.id) setActiveItemId(newItems[0].id);
+    } catch (err) {
+      console.error('Error generating synthetic audio:', err);
+    } finally {
+      setIsGeminiProcessing(false);
+    }
+  };
+
   return (
     <div className="flex flex-1 h-full overflow-hidden bg-[#0a0d14] text-slate-100 select-none">
       {/* 1. Left Paradigm Selector & Audio List */}
@@ -149,9 +216,18 @@ export const AudioWorkspace: React.FC<AudioWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* Export Button */}
-        {onOpenExportModal && (
-          <div className="p-3 border-t border-slate-800 bg-slate-950/60">
+        {/* Gemini Generator & Export */}
+        <div className="p-3 border-t border-slate-800 bg-slate-950/60 flex flex-col gap-2">
+          <button
+            onClick={handleGeminiGenerateSyntheticAudio}
+            disabled={isGeminiProcessing}
+            className="w-full py-2 rounded-lg bg-gradient-to-r from-purple-600/30 to-blue-600/30 hover:from-purple-600/40 hover:to-blue-600/40 border border-purple-500/40 text-purple-300 font-semibold text-xs flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            <span>+ 3 Áudios Sintéticos (Gemini)</span>
+          </button>
+
+          {onOpenExportModal && (
             <button
               onClick={onOpenExportModal}
               className="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium text-xs flex items-center justify-center gap-2 transition-colors"
@@ -159,8 +235,8 @@ export const AudioWorkspace: React.FC<AudioWorkspaceProps> = ({
               <Download className="w-3.5 h-3.5 text-slate-400" />
               <span>Exportar Dataset</span>
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* 2. Main Studio Player & Interactive Timeline */}
@@ -185,25 +261,46 @@ export const AudioWorkspace: React.FC<AudioWorkspaceProps> = ({
                 </div>
               </div>
 
-              {/* Paradigm Selector Pills */}
-              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
-                {[
-                  { id: 'speech_recognition_asr', label: 'ASR (Transcrição)', icon: Mic },
-                  { id: 'speaker_diarization', label: 'Diarização de Locutores', icon: Users },
-                  { id: 'sound_event_detection', label: 'Eventos Sonoros (SED)', icon: Radio },
-                  { id: 'forced_alignment', label: 'Alinhamento Forçado', icon: Clock },
-                ].map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => setActiveSubTab(t.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
-                      activeSubTab === t.id ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <t.icon className="w-3.5 h-3.5" />
-                    <span>{t.label}</span>
-                  </button>
-                ))}
+              {/* Paradigm Selector Pills & Gemini Assistant */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleGeminiTranscribe}
+                  disabled={isGeminiProcessing}
+                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow-md shadow-purple-600/20 transition-all disabled:opacity-50"
+                  title="Transcrever e anotar automaticamente usando Google Gemini Flash"
+                >
+                  {isGeminiProcessing ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Analisando com Gemini...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                      <span>Auto-Anotar com Gemini</span>
+                    </>
+                  )}
+                </button>
+
+                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                  {[
+                    { id: 'speech_recognition_asr', label: 'ASR (Transcrição)', icon: Mic },
+                    { id: 'speaker_diarization', label: 'Diarização de Locutores', icon: Users },
+                    { id: 'sound_event_detection', label: 'Eventos Sonoros (SED)', icon: Radio },
+                    { id: 'forced_alignment', label: 'Alinhamento Forçado', icon: Clock },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setActiveSubTab(t.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                        activeSubTab === t.id ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <t.icon className="w-3.5 h-3.5" />
+                      <span>{t.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 

@@ -36,6 +36,7 @@ import {
   SentencePairItem,
   LLMDatasetItem
 } from '../../types/dataset';
+import { GeminiNLPAssistantModal } from './GeminiNLPAssistantModal';
 
 interface NLPWorkspaceProps {
   project: DatasetProject;
@@ -68,6 +69,30 @@ export const NLPWorkspace: React.FC<NLPWorkspaceProps> = ({
 
   // 5. RAG RETRIEVAL STATE
   const [activeRAGId, setActiveRAGId] = useState<string | null>(project.ragItems?.[0]?.id || null);
+
+  // 6. GEMINI ASSISTANT MODAL STATE
+  const [isGeminiModalOpen, setIsGeminiModalOpen] = useState(false);
+
+  const handleApplyGeneratedData = (tType: string, newItems: any[]) => {
+    if (!newItems.length) return;
+    if (tType === 'extractive_qa') {
+      const updated = [...(project.qaItems || []), ...newItems];
+      onUpdateProject({ ...project, qaItems: updated });
+      if (newItems[0]?.id) setActiveQAId(newItems[0].id);
+    } else if (tType === 'text_to_sql') {
+      const updated = [...(project.sqlItems || []), ...newItems];
+      onUpdateProject({ ...project, sqlItems: updated });
+      if (newItems[0]?.id) setActiveSQLId(newItems[0].id);
+    } else if (tType === 'chain_of_thought') {
+      const updated = [...(project.cotItems || []), ...newItems];
+      onUpdateProject({ ...project, cotItems: updated });
+      if (newItems[0]?.id) setActiveCoTId(newItems[0].id);
+    } else if (tType === 'function_calling') {
+      const updated = [...(project.toolCallItems || []), ...newItems];
+      onUpdateProject({ ...project, toolCallItems: updated });
+      if (newItems[0]?.id) setActiveToolId(newItems[0].id);
+    }
+  };
 
   const activeClass = project.classes.find((c) => c.id === activeClassId) || project.classes[0];
 
@@ -277,6 +302,22 @@ export const NLPWorkspace: React.FC<NLPWorkspaceProps> = ({
                 </button>
               );
             })}
+          </div>
+
+          {/* Gemini AI Synthesis Button */}
+          <div className="px-2 pt-2">
+            <button
+              onClick={() => setIsGeminiModalOpen(true)}
+              className="w-full p-2.5 rounded-xl bg-gradient-to-r from-purple-600/30 to-blue-600/30 hover:from-purple-600/40 hover:to-blue-600/40 border border-purple-500/40 text-purple-300 font-semibold flex items-center justify-between text-xs transition-all shadow-md"
+            >
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-400" />
+                <span>Gemini Flash IA</span>
+              </div>
+              <span className="text-[9px] bg-purple-500/30 text-purple-200 px-1.5 py-0.5 rounded font-mono">
+                Sintetizar
+              </span>
+            </button>
           </div>
         </div>
 
@@ -668,6 +709,15 @@ export const NLPWorkspace: React.FC<NLPWorkspaceProps> = ({
           </div>
         )}
       </div>
+
+      {/* Gemini AI Synthesis Modal */}
+      <GeminiNLPAssistantModal
+        isOpen={isGeminiModalOpen}
+        onClose={() => setIsGeminiModalOpen(false)}
+        project={project}
+        activeTaskType={activeSubTab}
+        onApplyGeneratedData={handleApplyGeneratedData}
+      />
     </div>
   );
 };

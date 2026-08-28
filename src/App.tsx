@@ -16,6 +16,7 @@ import { VideoImportModal } from './components/Modals/VideoImportModal';
 import { NewDatasetModal } from './components/Modals/NewDatasetModal';
 import { AIAnnotationModal } from './components/Modals/AIAnnotationModal';
 import { AugmentationModal } from './components/Modals/AugmentationModal';
+import { GeminiSettingsModal } from './components/Modals/GeminiSettingsModal';
 import { SidebarActionFooter } from './components/Sidebar/SidebarActionFooter';
 import { predictImageWithAI } from './utils/aiClient';
 import { AIModelType } from './types/aiModel';
@@ -103,6 +104,7 @@ export const App: React.FC = () => {
   const [isVideoStudioOpen, setIsVideoStudioOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isAugmentationModalOpen, setIsAugmentationModalOpen] = useState(false);
+  const [isGeminiSettingsOpen, setIsGeminiSettingsOpen] = useState(false);
   const [defaultAIModelId, setDefaultAIModelId] = useState<AIModelType>(() => {
     return (localStorage.getItem('annotatex_default_ai_model') as AIModelType) || 'yolov11n';
   });
@@ -661,6 +663,7 @@ export const App: React.FC = () => {
         onUpdateProjectName={(name) => updateProject((prev) => ({ ...prev, name }))}
         onOpenAIModal={() => setIsAIModalOpen(true)}
         onOpenAugmentationModal={() => setIsAugmentationModalOpen(true)}
+        onOpenGeminiSettings={() => setIsGeminiSettingsOpen(true)}
       />
 
       {/* 2. Main View Router */}
@@ -987,6 +990,12 @@ export const App: React.FC = () => {
         project={currentProject}
         activeImage={activeImage}
         onApplyAugmentedImages={handleApplyAugmentedImages}
+      />
+
+      {/* Google Gemini Settings Modal */}
+      <GeminiSettingsModal
+        isOpen={isGeminiSettingsOpen}
+        onClose={() => setIsGeminiSettingsOpen(false)}
       />
     </div>
   );
