@@ -439,26 +439,31 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* 3. Right: Clean action */}
       <div className="flex items-center gap-2">
-        {onOpenAugmentationModal && (
-          <button
-            onClick={onOpenAugmentationModal}
-            title="Estúdio de Data Augmentation (Geometria, Cores, Ruído, Cutout)"
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs font-medium transition-colors"
-          >
-            <Wand2 className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Augmentation</span>
-          </button>
-        )}
+        {/* Dataset-specific actions: only show when inside an active dataset workspace */}
+        {currentView !== 'home' && currentView !== 'docs' && (
+          <>
+            {onOpenAugmentationModal && (
+              <button
+                onClick={onOpenAugmentationModal}
+                title="Estúdio de Data Augmentation (Geometria, Cores, Ruído, Cutout)"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs font-medium transition-colors"
+              >
+                <Wand2 className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Augmentation</span>
+              </button>
+            )}
 
-        {onOpenAIModal && (
-          <button
-            onClick={onOpenAIModal}
-            title="Modelos IA Pré-Treinados & Auto-Anotação (YOLOv11, Seg, Pose)"
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-medium transition-colors"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Auto IA</span>
-          </button>
+            {onOpenAIModal && (
+              <button
+                onClick={onOpenAIModal}
+                title="Modelos IA Pré-Treinados & Auto-Anotação (YOLOv11, Seg, Pose)"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-medium transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Auto IA</span>
+              </button>
+            )}
+          </>
         )}
 
         {(onOpenAISettings || onOpenGeminiSettings) && (
