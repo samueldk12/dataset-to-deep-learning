@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Eye, 
@@ -36,6 +36,28 @@ export const NewDatasetModal: React.FC<NewDatasetModalProps> = ({
   const [projectName, setProjectName] = useState('');
   const [projectDescription, setProjectDescription] = useState('');
   const [customClassesStr, setCustomClassesStr] = useState('Pessoa, Veículo, Defeito');
+
+  useEffect(() => {
+    if (isOpen) {
+      const domain = initialDomain || 'vision';
+      setSelectedDomain(domain);
+      const defaultTask: DatasetTaskType = domain === 'nlp' 
+        ? 'extractive_qa' 
+        : domain === 'audio' 
+          ? 'speech_recognition_asr' 
+          : 'object_detection';
+      setSelectedTask(initialTaskType || defaultTask);
+      setProjectName('');
+      setProjectDescription('');
+      if (domain === 'nlp') {
+        setCustomClassesStr('Pergunta, Resposta, Contexto');
+      } else if (domain === 'audio') {
+        setCustomClassesStr('Orador_1, Orador_2, Ruído_Fundo');
+      } else {
+        setCustomClassesStr('Pessoa, Veículo, Defeito');
+      }
+    }
+  }, [isOpen, initialDomain, initialTaskType]);
 
   if (!isOpen) return null;
 

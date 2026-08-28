@@ -130,7 +130,8 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <button
               onClick={() => {
-                onNavigateView('vision');
+                onOpenNewDatasetModal('vision', 'object_detection');
+                setHoveredDomain(null);
               }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 currentView === 'vision' || hoveredDomain === 'vision'
@@ -214,7 +215,8 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <button
               onClick={() => {
-                onNavigateView('nlp');
+                onOpenNewDatasetModal('nlp', 'extractive_qa');
+                setHoveredDomain(null);
               }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 currentView === 'nlp' || hoveredDomain === 'nlp'
@@ -297,7 +299,8 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <button
               onClick={() => {
-                onNavigateView('audio');
+                onOpenNewDatasetModal('audio', 'speech_recognition_asr');
+                setHoveredDomain(null);
               }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 currentView === 'audio' || hoveredDomain === 'audio'
@@ -470,7 +473,11 @@ export const Header: React.FC<HeaderProps> = ({
         )}
 
         <button
-          onClick={() => onOpenNewDatasetModal()}
+          onClick={() => {
+            const dom = currentView === 'nlp' ? 'nlp' : currentView === 'audio' ? 'audio' : 'vision';
+            const task = dom === 'nlp' ? 'extractive_qa' : dom === 'audio' ? 'speech_recognition_asr' : 'object_detection';
+            onOpenNewDatasetModal(dom, task);
+          }}
           className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors"
         >
           <Plus className="w-3.5 h-3.5" />
