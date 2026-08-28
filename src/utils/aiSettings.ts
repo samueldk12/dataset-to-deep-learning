@@ -171,5 +171,23 @@ export async function testProviderConnection(
     }
   }
 
+  if (provider === 'mcp' as any) {
+    try {
+      const res = await fetch('http://localhost:5000/api/mcp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const toolsCount = data.result?.tools?.length || 0;
+        return { success: true, message: `MCP Server Online! ${toolsCount} ferramentas ativas via JSON-RPC.` };
+      }
+      return { success: false, message: `Servidor MCP respondeu com status ${res.status}` };
+    } catch (e: any) {
+      return { success: false, message: 'Servidor Python MCP offline na porta 5000. Inicie com python server/app.py' };
+    }
+  }
+
   return { success: true, message: `Configuração para ${provider} salva localmente.` };
 }

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "annotatex-studio": {
+      "command": "python",
+      "args": ["C:/Users/samue/Documents/antigravity/modest-hypatia/server/mcp_server.py"]
+    }
+  }
+}

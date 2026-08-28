@@ -16,7 +16,11 @@ import {
   Flame, 
   Bot,
   Layers,
-  Sliders
+  Sliders,
+  Terminal,
+  Copy,
+  Check,
+  Code
 } from 'lucide-react';
 import { 
   UniversalAISettings, 
@@ -29,7 +33,7 @@ import { setGeminiApiKey } from '../../utils/geminiClient';
 interface AISettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialProvider?: 'gemini' | 'openai' | 'anthropic' | 'groq' | 'huggingface' | 'ollama';
+  initialProvider?: 'gemini' | 'openai' | 'anthropic' | 'groq' | 'huggingface' | 'ollama' | 'mcp';
 }
 
 export const AISettingsModal: React.FC<AISettingsModalProps> = ({
@@ -38,10 +42,11 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
   initialProvider = 'gemini',
 }) => {
   const [settings, setSettings] = useState<UniversalAISettings>(loadUniversalAISettings());
-  const [activeTab, setActiveTab] = useState<'gemini' | 'openai' | 'anthropic' | 'groq' | 'huggingface' | 'ollama'>(initialProvider);
+  const [activeTab, setActiveTab] = useState<'gemini' | 'openai' | 'anthropic' | 'groq' | 'huggingface' | 'ollama' | 'mcp'>(initialProvider);
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [isTesting, setIsTesting] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string } | null>>({});
+  const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -57,6 +62,12 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
     setShowKey((prev) => ({ ...prev, [provider]: !prev[provider] }));
   };
 
+  const handleCopy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedSnippet(id);
+    setTimeout(() => setCopiedSnippet(null), 2000);
+  };
+
   const handleSave = () => {
     saveUniversalAISettings(settings);
     if (settings.gemini.apiKey) {
@@ -65,12 +76,12 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
     onClose();
   };
 
-  const handleTestConnection = async (provider: 'gemini' | 'openai' | 'anthropic' | 'groq' | 'huggingface' | 'ollama') => {
+  const handleTestConnection = async (provider: 'gemini' | 'openai' | 'anthropic' | 'groq' | 'huggingface' | 'ollama' | 'mcp') => {
     setIsTesting(true);
     setTestResults((prev) => ({ ...prev, [provider]: null }));
     try {
-      const config = settings[provider];
-      const res = await testProviderConnection(provider, config);
+      const config = provider === 'mcp' ? { baseUrl: 'http://localhost:5000' } : (settings as any)[provider];
+      const res = await testProviderConnection(provider as any, config);
       setTestResults((prev) => ({ ...prev, [provider]: res }));
       if (res.success && provider === 'gemini' && settings.gemini.apiKey) {
         setGeminiApiKey(settings.gemini.apiKey);
@@ -85,6 +96,40 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
     }
   };
 
+  const cursorSnippet = `{
+  "mcpServers": {
+    "annotatex-studio": {
+      "command": "python",
+      "args": ["server/mcp_server.py"],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}`;
+
+  const claudeDesktopSnippet = `{
+  "mcpServers": {
+    "annotatex-studio": {
+      "command": "python",
+      "args": ["C:/Users/samue/Documents/antigravity/modest-hypatia/server/mcp_server.py"]
+    }
+  }
+}`;
+
+  const httpSnippet = `POST http://localhost:5000/api/mcp
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "annotatex_export_dataset",
+    "arguments": { "format": "yolo", "yolo_version": "v11" }
+  }
+}`;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in select-none">
       <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
@@ -96,13 +141,13 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-white flex items-center gap-2">
-                Configurações de IA & Chaves de API
+                Configurações de IA & Servidor MCP
                 <span className="text-[10px] font-semibold bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full border border-blue-500/30">
-                  Multimodal & LLMs
+                  Multimodal, LLMs & MCP
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Configure suas chaves de API dos provedores de Inteligência Artificial para auto-anotação e síntese
+                Configure suas chaves de API, modelos de inferência e integre agentes IA via Model Context Protocol (MCP)
               </p>
             </div>
           </div>
@@ -124,6 +169,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
             { id: 'groq', label: 'Groq Cloud', icon: <Zap className="w-3.5 h-3.5 text-orange-400" />, badge: 'Rápido' },
             { id: 'huggingface', label: 'Hugging Face', icon: <Layers className="w-3.5 h-3.5 text-yellow-400" /> },
             { id: 'ollama', label: 'Ollama Local', icon: <Server className="w-3.5 h-3.5 text-cyan-400" /> },
+            { id: 'mcp', label: 'Servidor MCP', icon: <Terminal className="w-3.5 h-3.5 text-cyan-400" />, badge: 'Protocol' },
           ].map((tab) => {
             const isSelected = activeTab === tab.id;
             return (
@@ -165,7 +211,6 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* Gemini API Key Input */}
               <div className="space-y-1.5">
                 <label className="font-semibold text-slate-200 flex items-center justify-between">
                   <span className="flex items-center gap-1.5">
@@ -205,7 +250,6 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* Model Choice */}
               <div className="space-y-1.5">
                 <label className="font-semibold text-slate-200">Modelo Padrão do Gemini:</label>
                 <select
@@ -472,6 +516,113 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
             </div>
           )}
 
+          {/* TAB 6: MCP SERVER (MODEL CONTEXT PROTOCOL) */}
+          {activeTab === 'mcp' && (
+            <div className="space-y-4 animate-fade-in">
+              <div className="p-3.5 rounded-xl bg-cyan-950/40 border border-cyan-700/50 flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <Terminal className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-semibold text-cyan-200 flex items-center gap-2">
+                      Servidor Model Context Protocol (MCP) Ativo
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                        8 Ferramentas JSON-RPC
+                      </span>
+                    </p>
+                    <p className="text-slate-400 text-[11px] leading-relaxed">
+                      Conecte assistentes externos (Claude Desktop, Cursor IDE, Antigravity, Roo/Cline) para criar datasets, rodar inferência YOLOv11, gerar dados sintéticos de NLP e exportar arquivos programaticamente.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* MCP Tools Grid */}
+              <div className="space-y-1.5">
+                <label className="font-semibold text-slate-200 flex items-center gap-1.5">
+                  <Code className="w-3.5 h-3.5 text-purple-400" />
+                  Ferramentas MCP Registradas no Servidor:
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+                  {[
+                    { name: 'annotatex_create_dataset', desc: 'Cria novos datasets para Visão, NLP ou Áudio.' },
+                    { name: 'annotatex_ai_predict', desc: 'Executa YOLOv11/v8/Pose em imagens via MCP.' },
+                    { name: 'annotatex_gemini_generate_nlp', desc: 'Gera SQuAD QA, Text-to-SQL, CoT via Gemini.' },
+                    { name: 'annotatex_gemini_transcribe_audio', desc: 'Transcreve e diariza áudio via Gemini Flash.' },
+                    { name: 'annotatex_extract_video_frames', desc: 'Extrai frames de URLs de vídeo sem CORS.' },
+                    { name: 'annotatex_merge_annotations', desc: 'Mescla e gera envoltória convexa de anotações.' },
+                    { name: 'annotatex_auto_classify', desc: 'Executa auto-classificação heurística.' },
+                    { name: 'annotatex_export_dataset', desc: 'Exporta YOLO, COCO, Parquet com config.yaml.' },
+                  ].map((t) => (
+                    <div key={t.name} className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
+                      <p className="font-mono font-semibold text-cyan-300 text-[10.5px]">{t.name}</p>
+                      <p className="text-slate-400 text-[10px] mt-0.5">{t.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Cursor Config Snippet */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-slate-200 flex items-center gap-1.5">
+                    <Terminal className="w-3.5 h-3.5 text-blue-400" />
+                    Configuração para Cursor IDE (<code className="text-cyan-300">.cursor/mcp.json</code>):
+                  </label>
+                  <button
+                    onClick={() => handleCopy(cursorSnippet, 'cursor')}
+                    className="flex items-center gap-1 text-xs text-slate-400 hover:text-white"
+                  >
+                    {copiedSnippet === 'cursor' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedSnippet === 'cursor' ? 'Copiado!' : 'Copiar'}</span>
+                  </button>
+                </div>
+                <pre className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-[10.5px] font-mono text-slate-300 overflow-x-auto">
+                  {cursorSnippet}
+                </pre>
+              </div>
+
+              {/* Claude Desktop Config Snippet */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-slate-200 flex items-center gap-1.5">
+                    <Bot className="w-3.5 h-3.5 text-amber-400" />
+                    Configuração para Claude Desktop (<code className="text-cyan-300">claude_desktop_config.json</code>):
+                  </label>
+                  <button
+                    onClick={() => handleCopy(claudeDesktopSnippet, 'claude')}
+                    className="flex items-center gap-1 text-xs text-slate-400 hover:text-white"
+                  >
+                    {copiedSnippet === 'claude' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedSnippet === 'claude' ? 'Copiado!' : 'Copiar'}</span>
+                  </button>
+                </div>
+                <pre className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-[10.5px] font-mono text-slate-300 overflow-x-auto">
+                  {claudeDesktopSnippet}
+                </pre>
+              </div>
+
+              {/* HTTP JSON-RPC Endpoint */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-slate-200 flex items-center gap-1.5">
+                    <Server className="w-3.5 h-3.5 text-emerald-400" />
+                    Endpoint HTTP JSON-RPC (<code className="text-emerald-300">/api/mcp</code>):
+                  </label>
+                  <button
+                    onClick={() => handleCopy(httpSnippet, 'http')}
+                    className="flex items-center gap-1 text-xs text-slate-400 hover:text-white"
+                  >
+                    {copiedSnippet === 'http' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedSnippet === 'http' ? 'Copiado!' : 'Copiar'}</span>
+                  </button>
+                </div>
+                <pre className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-[10.5px] font-mono text-slate-300 overflow-x-auto">
+                  {httpSnippet}
+                </pre>
+              </div>
+            </div>
+          )}
+
           {/* Connection Test Result Box */}
           {testResults[activeTab] && (
             <div
@@ -514,7 +665,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
             ) : (
               <>
                 <Zap className="w-3.5 h-3.5 text-yellow-400" />
-                <span>Testar Conexão</span>
+                <span>{activeTab === 'mcp' ? 'Testar Servidor MCP' : 'Testar Conexão'}</span>
               </>
             )}
           </button>
@@ -531,7 +682,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({
               className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-lg shadow-purple-600/20 transition-all"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Salvar Todas as Chaves</span>
+              <span>Salvar Todas as Configurações</span>
             </button>
           </div>
         </div>

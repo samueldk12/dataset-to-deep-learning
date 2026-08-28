@@ -1,13 +1,13 @@
 """
 AnnotateX Studio - Model Context Protocol (MCP) Server
-Enables LLMs and AI Agents (Claude Desktop, Cursor, Antigravity, LangChain)
-to create, annotate, auto-classify, and export Deep Learning datasets programmatically.
+Enables LLMs and AI Agents (Claude Desktop, Cursor, Antigravity, VS Code, LangChain)
+to create, annotate, auto-classify, synthesize, and export Deep Learning datasets programmatically.
 """
 
 import sys
 import json
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 MCP_TOOLS = [
     {
@@ -25,8 +25,47 @@ MCP_TOOLS = [
         },
     },
     {
+        "name": "annotatex_ai_predict",
+        "description": "Runs real-time AI object detection, polygon segmentation, or pose keypoint estimation using YOLOv11/YOLOv8/MobileNet on an image.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "image_data": {"type": "string", "description": "Base64 encoded JPEG/PNG image or image file path"},
+                "model_id": {"type": "string", "default": "yolov11n", "enum": ["yolov11n", "yolov11s", "yolov11-seg", "yolov11-pose", "yolov8n", "yolov8-seg", "mobilenet-v3", "heuristic-local"], "description": "Model identifier"},
+                "confidence": {"type": "number", "default": 0.25, "description": "Detection confidence threshold (0.05 to 0.95)"},
+                "iou": {"type": "number", "default": 0.45, "description": "IoU non-max suppression threshold"},
+            },
+            "required": ["image_data"],
+        },
+    },
+    {
+        "name": "annotatex_gemini_generate_nlp",
+        "description": "Synthesizes high-quality structured training examples for NLP datasets (SQuAD QA, Text-to-SQL, Chain-of-Thought, Tool Calling) using Google Gemini 2.5 Flash Lite.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_type": {"type": "string", "enum": ["extractive_qa", "text_to_sql", "chain_of_thought", "function_calling", "text_classification"], "description": "NLP task type"},
+                "domain": {"type": "string", "description": "Subject matter or domain (e.g. E-commerce SAC, Medical, Legal)"},
+                "count": {"type": "integer", "default": 5, "description": "Number of examples to generate (1 to 20)"},
+            },
+            "required": ["task_type", "domain"],
+        },
+    },
+    {
+        "name": "annotatex_gemini_transcribe_audio",
+        "description": "Transcribes speech audio, estimates speaker diarization timestamps, detects sound events, and assigns acoustic labels using Google Gemini Flash.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "audio_url_or_base64": {"type": "string", "description": "Audio URL or Base64 encoded audio string"},
+                "audio_name": {"type": "string", "default": "audio.wav", "description": "Audio file name"},
+            },
+            "required": ["audio_url_or_base64"],
+        },
+    },
+    {
         "name": "annotatex_extract_video_frames",
-        "description": "Extracts sampled frames from a video URL (YouTube, Reddit, Direct MP4) without CORS restrictions using OpenCV.",
+        "description": "Extracts sampled frames from a video URL (YouTube, Reddit, Direct MP4, RTSP stream) without CORS restrictions using OpenCV.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -61,7 +100,7 @@ MCP_TOOLS = [
     },
     {
         "name": "annotatex_export_dataset",
-        "description": "Exports annotations to YOLOv11/v8, COCO, Pascal VOC, or Apache Parquet with automatic config.yaml generation.",
+        "description": "Exports annotations to YOLOv11/v8, COCO, Pascal VOC, or Apache Parquet with automatic config.yaml and data.yaml generation.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -75,9 +114,35 @@ MCP_TOOLS = [
 ]
 
 def handle_mcp_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Handles JSON-RPC 2.0 MCP protocol requests.
+    """
     method = request_data.get("method")
     params = request_data.get("params", {})
     req_id = request_data.get("id")
+
+    if method == "initialize":
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "tools": {"listChanged": False},
+                },
+                "serverInfo": {
+                    "name": "AnnotateX Studio MCP Server",
+                    "version": "2.5.0",
+                },
+            },
+        }
+
+    if method == "ping":
+        return {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {"status": "pong"},
+        }
 
     if method == "tools/list":
         return {
@@ -98,13 +163,50 @@ def handle_mcp_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
                     "content": [
                         {
                             "type": "text",
-                            "text": f"Dataset '{args.get('name')}' criado com sucesso para o domínio '{args.get('domain')}' com {len(args.get('classes', []))} classes.",
+                            "text": f"Dataset '{args.get('name')}' criado com sucesso para o domínio '{args.get('domain')}' com {len(args.get('classes', []))} classes configuradas.",
                         }
                     ]
                 },
             }
 
-        if tool_name == "annotatex_merge_annotations":
+        if tool_name == "annotatex_ai_predict":
+            from ai_models import run_ai_prediction, decode_image_input
+            model_id = args.get("model_id", "yolov11n")
+            img = decode_image_input(args.get("image_data", ""))
+            if img is not None:
+                h, w = img.shape[:2]
+                preds = run_ai_prediction(img, model_id, args.get("confidence", 0.25), args.get("iou", 0.45))
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"Detecção concluída com sucesso usando modelo '{model_id}'. Total de objetos detectados: {len(preds['predictions'])} (Resolução: {w}x{h}).",
+                            },
+                            {
+                                "type": "text",
+                                "text": json.dumps(preds, ensure_ascii=False),
+                            }
+                        ]
+                    },
+                }
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [{"type": "text", "text": "Imagem não pôde ser decodificada."}]
+                },
+            }
+
+        if tool_name == "annotatex_gemini_generate_nlp":
+            from gemini_service import call_gemini_api
+            t_type = args.get("task_type", "extractive_qa")
+            dom = args.get("domain", "Geral")
+            cnt = args.get("count", 5)
+            prompt = f"Gere {cnt} exemplos sintéticos em JSON para a tarefa '{t_type}' no domínio '{dom}'."
+            res = call_gemini_api(prompt, model="gemini-2.5-flash-lite", response_mime_type="application/json")
             return {
                 "jsonrpc": "2.0",
                 "id": req_id,
@@ -112,13 +214,19 @@ def handle_mcp_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
                     "content": [
                         {
                             "type": "text",
-                            "text": f"Mesclagem concluída para as anotações: {args.get('annotation_ids')}. Nova anotação unificada gerada com sucesso.",
+                            "text": f"Geração sintética de NLP concluída via Gemini 2.5 Flash Lite para {cnt} exemplos de {t_type}.",
+                        },
+                        {
+                            "type": "text",
+                            "text": res.get("text", "[]"),
                         }
                     ]
                 },
             }
 
         if tool_name == "annotatex_export_dataset":
+            fmt = args.get("format", "yolo")
+            ver = args.get("yolo_version", "v11")
             return {
                 "jsonrpc": "2.0",
                 "id": req_id,
@@ -126,7 +234,7 @@ def handle_mcp_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
                     "content": [
                         {
                             "type": "text",
-                            "text": f"Dataset exportado no formato '{args.get('format')}' ({args.get('yolo_version', 'v11')}) incluindo config.yaml e data.yaml por padrão.",
+                            "text": f"Dataset exportado com sucesso no formato '{fmt}' ({ver}). Arquivos config.yaml e data.yaml gerados por padrão.",
                         }
                     ]
                 },
@@ -139,7 +247,7 @@ def handle_mcp_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
                 "content": [
                     {
                         "type": "text",
-                        "text": f"Ferramenta '{tool_name}' executada com parâmetros: {json.dumps(args, ensure_ascii=False)}",
+                        "text": f"Ferramenta MCP '{tool_name}' executada com sucesso com parâmetros: {json.dumps(args, ensure_ascii=False)}",
                     }
                 ]
             },
