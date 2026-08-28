@@ -41,18 +41,7 @@ interface ToolbarProps {
   onRedo: () => void;
   hasSelection: boolean;
   onDeleteSelected: () => void;
-  onConvexHull: () => void;
-  onFitScreen: () => void;
-  onOpenExportModal?: () => void;
-  onOpenVideoStudio?: () => void;
-  onOpenAddImages?: () => void;
   onOpenShortcuts?: () => void;
-  onOpenAIModal?: () => void;
-  onOpenAugmentationModal?: () => void;
-  onAutoClassify?: () => void;
-  onCopyAnnotations?: () => void;
-  onPasteAnnotations?: () => void;
-  onPropagateToNext?: () => void;
   onMergeSelected?: () => void;
   canMerge?: boolean;
 }
@@ -66,18 +55,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onRedo,
   hasSelection,
   onDeleteSelected,
-  onConvexHull,
-  onFitScreen,
-  onOpenExportModal,
-  onOpenVideoStudio,
-  onOpenAddImages,
   onOpenShortcuts,
-  onOpenAIModal,
-  onOpenAugmentationModal,
-  onAutoClassify,
-  onCopyAnnotations,
-  onPasteAnnotations,
-  onPropagateToNext,
   onMergeSelected,
   canMerge = false,
 }) => {
@@ -230,7 +208,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         })}
       </div>
 
-      {/* 3. Bottom Utility Actions */}
+      {/* 3. Bottom Utility Actions (Shortcuts & Selection Actions) */}
       <div className="flex flex-col items-center gap-1 mt-2">
         <div className="w-6 h-[1px] bg-slate-800 my-1" />
 
@@ -248,71 +226,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </button>
         )}
 
-        {/* AI Pre-Trained Models Auto-Annotation */}
-        {onOpenAIModal && (
-          <button
-            onClick={onOpenAIModal}
-            className="p-2 rounded-lg bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/30 transition-colors group relative"
-            title="Modelos IA Pré-Treinados & Auto-Anotação (YOLOv11, Seg, Pose)"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span className="absolute left-full ml-2 px-2 py-1 bg-slate-900 border border-slate-700 text-white text-[11px] rounded shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
-              Modelos IA Pré-Treinados (YOLOv11/v8)
-            </span>
-          </button>
-        )}
-
-        {/* Data Augmentation Studio */}
-        {onOpenAugmentationModal && (
-          <button
-            onClick={onOpenAugmentationModal}
-            className="p-2 rounded-lg bg-purple-600/20 text-purple-400 hover:bg-purple-600 hover:text-white border border-purple-500/30 transition-colors group relative"
-            title="Estúdio de Data Augmentation (Geometria, Cores, Ruído, Cutout)"
-          >
-            <Wand2 className="w-4 h-4" />
-            <span className="absolute left-full ml-2 px-2 py-1 bg-slate-900 border border-slate-700 text-white text-[11px] rounded shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
-              Data Augmentation Studio
-            </span>
-          </button>
-        )}
-
-        {/* Auto-Classify Tool */}
-        {onAutoClassify && (
-          <button
-            onClick={onAutoClassify}
-            className="p-2 rounded-lg text-amber-400 hover:bg-slate-800 hover:text-amber-300 transition-colors group relative"
-            title="Auto-Classificar Anotações por Heurística"
-          >
-            <Cpu className="w-4 h-4" />
-            <span className="absolute left-full ml-2 px-2 py-1 bg-slate-900 border border-slate-700 text-white text-[11px] rounded shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
-              Auto-Classificar por Heurística
-            </span>
-          </button>
-        )}
-
-        {/* Copy / Propagate to Next Image */}
-        {onPropagateToNext && (
-          <button
-            onClick={onPropagateToNext}
-            className="p-2 rounded-lg text-emerald-400 hover:bg-slate-800 hover:text-emerald-300 transition-colors group relative"
-            title="Copiar e Propagar Anotações para a Próxima Imagem (Shift+D)"
-          >
-            <ArrowRightCircle className="w-4 h-4" />
-            <span className="absolute left-full ml-2 px-2 py-1 bg-slate-900 border border-slate-700 text-white text-[11px] rounded shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
-              Propagar para Próxima Imagem <kbd className="text-slate-400 text-[10px]">(Shift+D)</kbd>
-            </span>
-          </button>
-        )}
-
-        {/* Fit Screen */}
-        <button
-          onClick={onFitScreen}
-          className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
-          title="Ajustar Imagem à Tela (F)"
-        >
-          <Maximize2 className="w-4 h-4" />
-        </button>
-
         {/* Delete Selected */}
         {hasSelection && (
           <button
@@ -321,39 +234,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             title="Excluir Anotação Selecionada (Del/Backspace)"
           >
             <Trash2 className="w-4 h-4" />
-          </button>
-        )}
-
-        {/* Add Images */}
-        {onOpenAddImages && (
-          <button
-            onClick={onOpenAddImages}
-            className="p-2 rounded-lg text-blue-400 hover:text-blue-300 hover:bg-slate-800 transition-colors"
-            title="Adicionar Mais Imagens"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-        )}
-
-        {/* Video / Stream Studio */}
-        {onOpenVideoStudio && (
-          <button
-            onClick={onOpenVideoStudio}
-            className="p-2 rounded-lg text-purple-400 hover:text-purple-300 hover:bg-slate-800 transition-colors"
-            title="Importar Vídeo / Webcam / RTSP"
-          >
-            <Video className="w-4 h-4" />
-          </button>
-        )}
-
-        {/* Export Dataset */}
-        {onOpenExportModal && (
-          <button
-            onClick={onOpenExportModal}
-            className="p-2 rounded-lg text-emerald-400 hover:text-emerald-300 hover:bg-slate-800 transition-colors"
-            title="Exportar Dataset (YOLO, Parquet, COCO, config.yaml)"
-          >
-            <Download className="w-4 h-4" />
           </button>
         )}
 

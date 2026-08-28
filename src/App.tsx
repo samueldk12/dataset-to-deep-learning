@@ -744,17 +744,7 @@ export const App: React.FC = () => {
                   handleDeleteAnnotation(selectedAnnotationId);
                 }
               }}
-              onConvexHull={handleConvexHull}
-              onFitScreen={() => setTransform({ scale: 0.95, offsetX: 0, offsetY: 0 })}
-              onOpenExportModal={() => setIsExportOpen(true)}
-              onOpenVideoStudio={() => setIsVideoStudioOpen(true)}
-              onOpenAddImages={() => quickFileInputRef.current?.click()}
-              onOpenAIModal={() => setIsAIModalOpen(true)}
-              onOpenAugmentationModal={() => setIsAugmentationModalOpen(true)}
-              onAutoClassify={handleAutoClassify}
-              onCopyAnnotations={handleCopyAnnotations}
-              onPasteAnnotations={handlePasteAnnotations}
-              onPropagateToNext={handlePropagateToNext}
+              onOpenShortcuts={() => setIsShortcutsOpen(true)}
               onMergeSelected={handleMergeAnnotations}
               canMerge={selectedAnnotationIds.length >= 2}
             />
