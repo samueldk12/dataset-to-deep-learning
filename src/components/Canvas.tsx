@@ -39,6 +39,14 @@ interface CanvasProps {
   onSelectTool?: (tool: ToolType) => void;
   onFitScreen?: () => void;
   onOpenAIModal?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+
+  // Tool parameter props
+  wandTolerance?: number;
+  wandContiguous?: boolean;
+  brushSize?: number;
+  brushMode?: 'add' | 'erase';
 }
 
 // Generate distinct deterministic color for instance-based coloring
@@ -71,6 +79,12 @@ export const Canvas: React.FC<CanvasProps> = ({
   onSelectTool,
   onFitScreen,
   onOpenAIModal,
+  onUndo,
+  onRedo,
+  wandTolerance = 32,
+  wandContiguous = true,
+  brushSize = 20,
+  brushMode = 'add',
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -359,8 +373,8 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     const threshold = 10 / transform.scale;
 
-    // 1. SELECT / MOVE / EDIT TOOL
-    if (activeTool === 'select' || activeTool === 'move') {
+    // 1. SELECT / MOVE / EDIT / SKELETON DIRECT EDIT
+    if (activeTool === 'select' || activeTool === 'move' || activeTool === 'skeleton') {
       // Check if clicking existing selected shape handles or vertices
       if (effectiveSelectedIds.length > 0) {
         const selAnn = image.annotations.find((a) => a.id === effectiveSelectedIds[0]);
@@ -382,9 +396,16 @@ export const Canvas: React.FC<CanvasProps> = ({
             }
           }
 
-          // Polygon / Polyline vertex
-          if (selAnn.type === 'polygon' || selAnn.type === 'polyline') {
-            const vIdx = findNearbyVertexIndex(imgCoord, selAnn.points, threshold);
+          // Polygon / Polyline / Skeleton / Cuboid 3D / Keypoint / Brush vertex dragging
+          if (
+            selAnn.type === 'polygon' ||
+            selAnn.type === 'polyline' ||
+            selAnn.type === 'skeleton' ||
+            selAnn.type === 'cuboid3d' ||
+            selAnn.type === 'brush' ||
+            selAnn.type === 'keypoint'
+          ) {
+            const vIdx = findNearbyVertexIndex(imgCoord, selAnn.points, threshold * 1.5);
             if (vIdx !== -1) {
               setDrawingState((prev) => ({
                 ...prev,
@@ -398,7 +419,37 @@ export const Canvas: React.FC<CanvasProps> = ({
         }
       }
 
-      // Check if clicking on any annotation on canvas
+      // Check if clicking directly on a vertex/joint of ANY visible annotation (especially skeletons & keypoints)
+      for (const a of [...image.annotations].reverse()) {
+        if (
+          a.visible !== false &&
+          !a.locked &&
+          (a.type === 'skeleton' ||
+            a.type === 'keypoint' ||
+            a.type === 'cuboid3d' ||
+            a.type === 'polygon' ||
+            a.type === 'polyline' ||
+            a.type === 'brush')
+        ) {
+          const vIdx = findNearbyVertexIndex(imgCoord, a.points, threshold * 1.5);
+          if (vIdx !== -1) {
+            onSelectAnnotation(a.id, isMultiSelect);
+            setDrawingState((prev) => ({
+              ...prev,
+              selectedAnnotationId: a.id,
+              selectedVertexIndex: vIdx,
+              selectedHandle: null,
+              isDraggingVertex: true,
+              isDraggingShape: false,
+              shapeDragStart: imgCoord,
+              initialShapePoints: a.points.map((p) => ({ ...p })),
+            }));
+            return;
+          }
+        }
+      }
+
+      // Check if clicking on any annotation body on canvas
       const hit = [...image.annotations].reverse().find((a) => 
         a.visible !== false && !a.locked && isPointInsideAnnotation(imgCoord, a, threshold)
       );
@@ -414,18 +465,21 @@ export const Canvas: React.FC<CanvasProps> = ({
           shapeDragStart: imgCoord,
           initialShapePoints: hit.points.map((p) => ({ ...p })),
         }));
+        if (activeTool === 'select' || activeTool === 'move') return;
       } else {
-        if (!isMultiSelect) {
-          onSelectAnnotation(null);
+        if (activeTool === 'select' || activeTool === 'move') {
+          if (!isMultiSelect) {
+            onSelectAnnotation(null);
+          }
+          setDrawingState((prev) => ({
+            ...prev,
+            selectedAnnotationId: null,
+            selectedVertexIndex: null,
+            selectedHandle: null,
+          }));
+          return;
         }
-        setDrawingState((prev) => ({
-          ...prev,
-          selectedAnnotationId: null,
-          selectedVertexIndex: null,
-          selectedHandle: null,
-        }));
       }
-      return;
     }
 
     // 2. POLYGON TOOL
@@ -1164,13 +1218,29 @@ function drawAnnotation(
     // Draw 17 Joint Handles
     pts.forEach((p, idx) => {
       const isHovered = hoveredVertex?.annId === ann.id && hoveredVertex?.vertexIndex === idx;
-      ctx.fillStyle = isHovered ? '#ffffff' : (idx === 0 ? '#ef4444' : color);
+      ctx.fillStyle = isHovered ? '#38bdf8' : (idx === 0 ? '#ef4444' : color);
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.5 / scale;
+      ctx.lineWidth = (isHovered ? 2.5 : 1.5) / scale;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, (isHovered ? 7 : (isSelected ? 5.5 : 4)) / scale, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, (isHovered ? 8 : (isSelected ? 6 : 4)) / scale, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+
+      // Draw anatomical joint name tag on hover
+      if (isHovered && SKELETON_KEYPOINT_NAMES[idx]) {
+        ctx.save();
+        ctx.font = `bold ${Math.max(10, 11 / scale)}px sans-serif`;
+        const labelText = SKELETON_KEYPOINT_NAMES[idx];
+        const textWidth = ctx.measureText(labelText).width;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+        ctx.fillRect(p.x + 8 / scale, p.y - 18 / scale, textWidth + 8 / scale, 18 / scale);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1 / scale;
+        ctx.strokeRect(p.x + 8 / scale, p.y - 18 / scale, textWidth + 8 / scale, 18 / scale);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(labelText, p.x + 12 / scale, p.y - 5 / scale);
+        ctx.restore();
+      }
     });
   }
 

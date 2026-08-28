@@ -19,6 +19,7 @@ import { AugmentationModal } from './components/Modals/AugmentationModal';
 import { AISettingsModal } from './components/Modals/AISettingsModal';
 import { GeminiSettingsModal } from './components/Modals/GeminiSettingsModal';
 import { SidebarActionFooter } from './components/Sidebar/SidebarActionFooter';
+import { ToolOptionsBar } from './components/Canvas/ToolOptionsBar';
 import { predictImageWithAI } from './utils/aiClient';
 import { AIModelType } from './types/aiModel';
 
@@ -110,6 +111,12 @@ export const App: React.FC = () => {
     return (localStorage.getItem('annotatex_default_ai_model') as AIModelType) || 'yolov11n';
   });
 
+  // Tool parameter states (Magic Wand & Brush)
+  const [wandTolerance, setWandTolerance] = useState(32);
+  const [wandContiguous, setWandContiguous] = useState(true);
+  const [brushSize, setBrushSize] = useState(20);
+  const [brushMode, setBrushMode] = useState<'add' | 'erase'>('add');
+
   const quickFileInputRef = useRef<HTMLInputElement>(null);
 
   // Load saved state on mount
@@ -147,6 +154,75 @@ export const App: React.FC = () => {
     },
     [currentProjectId]
   );
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) return;
+    const prev = undoStack[undoStack.length - 1];
+    setRedoStack((r) => [...r, currentProject]);
+    setUndoStack((u) => u.slice(0, -1));
+    setProjects((all) => all.map((p) => (p.id === prev.id ? prev : p)));
+  }, [undoStack, currentProject]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setUndoStack((u) => [...u, currentProject]);
+    setRedoStack((r) => r.slice(0, -1));
+    setProjects((all) => all.map((p) => (p.id === next.id ? next : p)));
+  }, [redoStack, currentProject]);
+
+  // Global Non-Ctrl Keyboard Shortcuts (U for Undo, Y for Redo, Shift+S for Export, Arrow keys for navigation)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      // 1. Undo combinations: U (single key), Shift+Z, Alt+Z, or Ctrl+Z
+      if (
+        ((e.key === 'u' || e.key === 'U') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) ||
+        ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey))
+      ) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      // 2. Redo combinations: Y (single key), Shift+Y, Shift+U, Alt+Y, or Ctrl+Y
+      if (
+        ((e.key === 'y' || e.key === 'Y') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) ||
+        ((e.key === 'u' || e.key === 'U') && e.shiftKey) ||
+        ((e.key === 'y' || e.key === 'Y') && (e.ctrlKey || e.metaKey))
+      ) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+
+      // 3. Export / Save: Shift+S or Alt+S
+      if ((e.key === 's' || e.key === 'S') && (e.shiftKey || e.altKey)) {
+        e.preventDefault();
+        setIsExportOpen(true);
+        return;
+      }
+
+      // 4. Quick image navigation: ArrowRight / ArrowLeft
+      if (currentProject.images && currentProject.images.length > 1) {
+        const currentIdx = currentProject.images.findIndex((img) => img.id === currentProject.activeImageId);
+        if (e.key === 'ArrowRight' || (e.key === 'n' && !e.ctrlKey && !e.metaKey)) {
+          e.preventDefault();
+          const nextIdx = (currentIdx + 1) % currentProject.images.length;
+          setCurrentProjectId(currentProject.id);
+          updateProject((prev) => ({ ...prev, activeImageId: currentProject.images[nextIdx].id }));
+        } else if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          const prevIdx = (currentIdx - 1 + currentProject.images.length) % currentProject.images.length;
+          updateProject((prev) => ({ ...prev, activeImageId: currentProject.images[prevIdx].id }));
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [handleUndo, handleRedo, currentProject, updateProject]);
 
   const handleCreateNewProject = (newProject: DatasetProject) => {
     setProjects((prev) => [newProject, ...prev]);
@@ -747,6 +823,14 @@ export const App: React.FC = () => {
               onOpenShortcuts={() => setIsShortcutsOpen(true)}
               onMergeSelected={handleMergeAnnotations}
               canMerge={selectedAnnotationIds.length >= 2}
+              wandTolerance={wandTolerance}
+              onWandToleranceChange={setWandTolerance}
+              wandContiguous={wandContiguous}
+              onWandContiguousChange={setWandContiguous}
+              brushSize={brushSize}
+              onBrushSizeChange={setBrushSize}
+              brushMode={brushMode}
+              onBrushModeChange={setBrushMode}
             />
 
             {/* Hidden Input for Quick Image Add */}
@@ -761,6 +845,19 @@ export const App: React.FC = () => {
 
             {/* Center Canvas Area */}
             <div className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#06080d]">
+              {/* Photoshop Style Tool Options Bar */}
+              <ToolOptionsBar
+                activeTool={activeTool}
+                wandTolerance={wandTolerance}
+                onWandToleranceChange={setWandTolerance}
+                wandContiguous={wandContiguous}
+                onWandContiguousChange={setWandContiguous}
+                brushSize={brushSize}
+                onBrushSizeChange={setBrushSize}
+                brushMode={brushMode}
+                onBrushModeChange={setBrushMode}
+              />
+
               <Canvas
                 image={activeImage}
                 classes={currentProject.classes}
@@ -778,6 +875,12 @@ export const App: React.FC = () => {
                 onSelectTool={setActiveTool}
                 onFitScreen={() => setTransform({ scale: 0.95, offsetX: 0, offsetY: 0 })}
                 onOpenAIModal={() => setIsAIModalOpen(true)}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
+                wandTolerance={wandTolerance}
+                wandContiguous={wandContiguous}
+                brushSize={brushSize}
+                brushMode={brushMode}
                 transform={transform}
                 onTransformChange={setTransform}
                 filters={filters}
