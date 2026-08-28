@@ -10,7 +10,8 @@ import {
   Check,
   BookOpen,
   Sparkles,
-  Wand2
+  Wand2,
+  Settings
 } from 'lucide-react';
 import { DomainCategory, DatasetTaskType, DatasetProject } from '../types/dataset';
 import { TASK_CATALOG, TaskDefinition } from '../utils/taskCatalog';
@@ -469,11 +470,11 @@ export const Header: React.FC<HeaderProps> = ({
         {(onOpenAISettings || onOpenGeminiSettings) && (
           <button
             onClick={() => (onOpenAISettings ? onOpenAISettings() : onOpenGeminiSettings?.())}
-            title="Configurar Chaves de API de IA (Gemini, OpenAI, Anthropic, Groq, Ollama)"
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gradient-to-r from-purple-600/30 to-blue-600/30 hover:from-purple-600/40 hover:to-blue-600/40 text-purple-200 border border-purple-500/40 text-xs font-semibold transition-all shadow-sm"
+            title="Configurações de IA, Chaves de API e Servidor MCP"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-900 transition-colors"
           >
-            <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-            <span className="hidden sm:inline">Configurar IAs</span>
+            <Settings className="w-3.5 h-3.5" />
+            <span>Configuração</span>
           </button>
         )}
 
