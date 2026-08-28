@@ -21,6 +21,7 @@ export interface Annotation {
   points: Point[];
   visible?: boolean;
   locked?: boolean;
+  score?: number;
   attributes?: Record<string, string | number | boolean>;
   createdAt?: number;
 }

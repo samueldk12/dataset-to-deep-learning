@@ -11,14 +11,15 @@ import {
   BookOpen,
   Sparkles,
   Wand2,
-  Settings
+  Settings,
+  Workflow
 } from 'lucide-react';
 import { DomainCategory, DatasetTaskType, DatasetProject } from '../types/dataset';
 import { TASK_CATALOG, TaskDefinition } from '../utils/taskCatalog';
 
 interface HeaderProps {
-  currentView: 'home' | 'docs' | DomainCategory;
-  onNavigateView: (view: 'home' | 'docs' | DomainCategory) => void;
+  currentView: 'home' | 'docs' | 'pipelines' | DomainCategory;
+  onNavigateView: (view: 'home' | 'docs' | 'pipelines' | DomainCategory) => void;
   projects: DatasetProject[];
   currentProject: DatasetProject;
   onSelectProject: (id: string) => void;
@@ -375,6 +376,22 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             )}
           </div>
+
+          {/* PIPELINES STUDIO */}
+          <button
+            onClick={() => {
+              setHoveredDomain(null);
+              onNavigateView('pipelines');
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              currentView === 'pipelines'
+                ? 'bg-slate-800 text-purple-400 font-semibold'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+            }`}
+          >
+            <Workflow className="w-3.5 h-3.5 text-purple-400" />
+            <span>Pipelines / Nodes</span>
+          </button>
 
           {/* DOCUMENTAÇÃO / DOCS */}
           <button

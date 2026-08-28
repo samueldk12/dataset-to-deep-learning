@@ -14,7 +14,9 @@ import {
   Download,
   Video,
   Layers,
-  FolderOpen
+  FolderOpen,
+  Workflow,
+  Sparkles
 } from 'lucide-react';
 import { DatasetProject, DomainCategory, DatasetTaskType } from '../types/dataset';
 import { TASK_CATALOG, TaskDefinition } from '../utils/taskCatalog';
@@ -26,6 +28,7 @@ interface HomeHubProps {
   onOpenNewDatasetModal: (domain?: DomainCategory, taskType?: DatasetTaskType) => void;
   onOpenExportModal?: (project?: DatasetProject) => void;
   onOpenVideoStudio?: (project?: DatasetProject) => void;
+  onOpenPipelines?: () => void;
 }
 
 export const HomeHub: React.FC<HomeHubProps> = ({
@@ -35,6 +38,7 @@ export const HomeHub: React.FC<HomeHubProps> = ({
   onOpenNewDatasetModal,
   onOpenExportModal,
   onOpenVideoStudio,
+  onOpenPipelines,
 }) => {
   const [activeDomainFilter, setActiveDomainFilter] = useState<'all' | DomainCategory>('all');
   const [search, setSearch] = useState('');
@@ -85,6 +89,16 @@ export const HomeHub: React.FC<HomeHubProps> = ({
               <span className="text-slate-600">•</span>
               <span>Áudios: <strong className="text-slate-200">{totalAudio}</strong></span>
             </div>
+
+            {onOpenPipelines && (
+              <button
+                onClick={onOpenPipelines}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-purple-300 border border-purple-500/40 hover:border-purple-400 font-semibold text-xs shadow-md transition-all active:scale-98"
+              >
+                <Workflow className="w-3.5 h-3.5 text-purple-400" />
+                <span>Pipelines / Nodes</span>
+              </button>
+            )}
 
             <button
               onClick={() => onOpenNewDatasetModal()}

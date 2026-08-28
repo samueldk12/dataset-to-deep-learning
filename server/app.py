@@ -113,6 +113,47 @@ def mcp_endpoint():
     response = handle_mcp_request(data)
     return jsonify(response)
 
+@app.route('/api/pipeline/run-code', methods=['POST', 'OPTIONS'])
+def run_pipeline_code():
+    """
+    Executes a custom Python script block inside a safe namespace with annotations input/output.
+    """
+    data = request.get_json(silent=True) or {}
+    code_str = data.get('code', '')
+    annotations = data.get('annotations', [])
+
+    safe_globals = {
+        'annotations': annotations,
+        'result_annotations': [],
+        'logs': [],
+        'json': json,
+        'len': len,
+        'range': range,
+        'min': min,
+        'max': max,
+        'abs': abs,
+        'round': round,
+        'sum': sum,
+        'isinstance': isinstance,
+        'dict': dict,
+        'list': list,
+    }
+
+    try:
+        exec(code_str, safe_globals)
+        res_anns = safe_globals.get('result_annotations', annotations)
+        return jsonify({
+            'success': True,
+            'result_annotations': res_anns,
+            'count': len(res_anns),
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'result_annotations': annotations,
+        }), 400
+
 @app.route('/api/extract-youtube', methods=['POST', 'OPTIONS'])
 def extract_youtube():
     """

@@ -27,6 +27,7 @@ import { AIModelType } from './types/aiModel';
 import { NLPWorkspace } from './components/Workspaces/NLPWorkspace';
 import { AudioWorkspace } from './components/Workspaces/AudioWorkspace';
 import { DocsWorkspace } from './components/Workspaces/DocsWorkspace';
+import { PipelineStudioWorkspace } from './components/Workspaces/PipelineStudioWorkspace';
 
 import { 
   DatasetProject, 
@@ -55,7 +56,7 @@ export const App: React.FC = () => {
   const initialProject = createSampleDataset();
   const [projects, setProjects] = useState<DatasetProject[]>([initialProject]);
   const [currentProjectId, setCurrentProjectId] = useState<string>(initialProject.id);
-  const [currentView, setCurrentView] = useState<'home' | 'docs' | DomainCategory>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'docs' | 'pipelines' | DomainCategory>('home');
 
   const currentProject = projects.find((p) => p.id === currentProjectId) || projects[0] || initialProject;
 
@@ -764,6 +765,7 @@ export const App: React.FC = () => {
               if (proj) setCurrentProjectId(proj.id);
               setIsVideoStudioOpen(true);
             }}
+            onOpenPipelines={() => setCurrentView('pipelines')}
           />
         )}
 
@@ -794,7 +796,16 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* VIEW D: COMPUTER VISION & YOLO CANVAS STUDIO */}
+        {/* VIEW D: VISUAL PIPELINES & NODE STUDIO */}
+        {currentView === 'pipelines' && (
+          <PipelineStudioWorkspace
+            project={currentProject}
+            onUpdateProject={(updated) => updateProject(updated)}
+            onOpenExportModal={() => setIsExportOpen(true)}
+          />
+        )}
+
+        {/* VIEW E: COMPUTER VISION & YOLO CANVAS STUDIO */}
         {currentView === 'vision' && (
           <div className="flex-1 flex overflow-hidden">
             {/* Left Toolbar */}

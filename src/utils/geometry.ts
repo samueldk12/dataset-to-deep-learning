@@ -604,3 +604,36 @@ export function extractMagicWandPolygon(
   return polygonPoints;
 }
 
+/**
+ * Calculates Intersection over Union (IoU) between two bounding boxes (given as 2-point arrays [{x,y}, {x,y}]).
+ */
+export function calculateBBoxIoU(ptsA: Point[], ptsB: Point[]): number {
+  if (!ptsA || !ptsB || ptsA.length < 2 || ptsB.length < 2) return 0;
+
+  const minAx = Math.min(ptsA[0].x, ptsA[1].x);
+  const maxAx = Math.max(ptsA[0].x, ptsA[1].x);
+  const minAy = Math.min(ptsA[0].y, ptsA[1].y);
+  const maxAy = Math.max(ptsA[0].y, ptsA[1].y);
+
+  const minBx = Math.min(ptsB[0].x, ptsB[1].x);
+  const maxBx = Math.max(ptsB[0].x, ptsB[1].x);
+  const minBy = Math.min(ptsB[0].y, ptsB[1].y);
+  const maxBy = Math.max(ptsB[0].y, ptsB[1].y);
+
+  const interX1 = Math.max(minAx, minBx);
+  const interY1 = Math.max(minAy, minBy);
+  const interX2 = Math.min(maxAx, maxBx);
+  const interY2 = Math.min(maxAy, maxBy);
+
+  const interW = Math.max(0, interX2 - interX1);
+  const interH = Math.max(0, interY2 - interY1);
+  const interArea = interW * interH;
+
+  const areaA = (maxAx - minAx) * (maxAy - minAy);
+  const areaB = (maxBx - minBx) * (maxBy - minBy);
+  const unionArea = areaA + areaB - interArea;
+
+  if (unionArea <= 0) return 0;
+  return interArea / unionArea;
+}
+
