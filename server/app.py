@@ -2,6 +2,8 @@ import os
 import sys
 import json
 import base64
+import time
+import shutil
 import tempfile
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -24,6 +26,151 @@ CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 TEMP_DIR = os.path.join(tempfile.gettempdir(), 'annotatex_videos')
 os.makedirs(TEMP_DIR, exist_ok=True)
+
+DATASETS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', 'datasets'))
+os.makedirs(DATASETS_DIR, exist_ok=True)
+
+def get_dataset_folder(dataset_id: str) -> str:
+    safe_id = "".join(c for c in str(dataset_id) if c.isalnum() or c in ('_', '-')).strip()
+    if not safe_id:
+        safe_id = f"dataset_{int(time.time())}"
+    return os.path.join(DATASETS_DIR, safe_id)
+
+def save_dataset_to_disk(project_data: dict) -> dict:
+    dataset_id = project_data.get('id') or f"proj_{int(time.time())}"
+    folder = get_dataset_folder(dataset_id)
+    images_dir = os.path.join(folder, 'images')
+    annotations_dir = os.path.join(folder, 'annotations')
+    texts_dir = os.path.join(folder, 'texts')
+    audios_dir = os.path.join(folder, 'audios')
+
+    os.makedirs(images_dir, exist_ok=True)
+    os.makedirs(annotations_dir, exist_ok=True)
+    os.makedirs(texts_dir, exist_ok=True)
+    os.makedirs(audios_dir, exist_ok=True)
+
+    classes = project_data.get('classes', [])
+    class_id_to_idx = {c['id']: idx for idx, c in enumerate(classes)}
+
+    images = project_data.get('images', [])
+    processed_images = []
+
+    for img in images:
+        img_id = img.get('id') or f"img_{int(time.time())}"
+        url = img.get('url', '')
+        
+        # Save base64 image as physical file in images/
+        if url.startswith('data:image/'):
+            try:
+                header, encoded = url.split(',', 1)
+                ext = 'jpg'
+                if 'png' in header:
+                    ext = 'png'
+                elif 'webp' in header:
+                    ext = 'webp'
+                
+                filename = f"{img_id}.{ext}"
+                file_path = os.path.join(images_dir, filename)
+                
+                with open(file_path, 'wb') as f:
+                    f.write(base64.b64decode(encoded))
+                
+                img['diskPath'] = file_path
+                img['url'] = f"http://localhost:5000/api/datasets/{dataset_id}/images/{filename}"
+            except Exception as e:
+                print(f"Error saving image {img_id} to disk: {e}")
+
+        # Save YOLO formatted annotation file in annotations/
+        anns = img.get('annotations', [])
+        yolo_lines = []
+        w = img.get('width', 800) or 800
+        h = img.get('height', 600) or 600
+
+        for a in anns:
+            cls_idx = class_id_to_idx.get(a.get('classId'), 0)
+            pts = a.get('points', [])
+            if a.get('type') == 'bbox' and len(pts) >= 2:
+                xmin = min(pts[0]['x'], pts[1]['x'])
+                xmax = max(pts[0]['x'], pts[1]['x'])
+                ymin = min(pts[0]['y'], pts[1]['y'])
+                ymax = max(pts[0]['y'], pts[1]['y'])
+                cx = (xmin + xmax) / 2.0 / w
+                cy = (ymin + ymax) / 2.0 / h
+                bw = (xmax - xmin) / w
+                bh = (ymax - ymin) / h
+                yolo_lines.append(f"{cls_idx} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}")
+
+        ann_file = os.path.join(annotations_dir, f"{img_id}.txt")
+        with open(ann_file, 'w', encoding='utf-8') as f:
+            f.write("\n".join(yolo_lines))
+
+        processed_images.append(img)
+
+    project_data['images'] = processed_images
+    project_data['updatedAt'] = int(time.time() * 1000)
+
+    # 1. config.json (Dataset metadata, classes, configuration, folder paths)
+    config = {
+        'id': project_data.get('id'),
+        'name': project_data.get('name'),
+        'description': project_data.get('description'),
+        'domain': project_data.get('domain', 'vision'),
+        'taskType': project_data.get('taskType', 'object_detection'),
+        'classes': project_data.get('classes', []),
+        'classSets': project_data.get('classSets', []),
+        'activeClassSetId': project_data.get('activeClassSetId'),
+        'imagesCount': len(project_data.get('images', [])),
+        'textItemsCount': len(project_data.get('textItems', [])),
+        'audioItemsCount': len(project_data.get('audioItems', [])),
+        'folderPath': folder,
+        'createdAt': project_data.get('createdAt') or int(time.time() * 1000),
+        'updatedAt': project_data['updatedAt'],
+    }
+
+    with open(os.path.join(folder, 'config.json'), 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+    # 2. dataset.json (Unified full dataset state)
+    with open(os.path.join(folder, 'dataset.json'), 'w', encoding='utf-8') as f:
+        json.dump(project_data, f, indent=2, ensure_ascii=False)
+
+    return project_data
+
+def load_all_datasets_from_disk() -> list:
+    datasets = []
+    if not os.path.exists(DATASETS_DIR):
+        return datasets
+
+    for entry in os.listdir(DATASETS_DIR):
+        folder = os.path.join(DATASETS_DIR, entry)
+        if os.path.isdir(folder):
+            dataset_json = os.path.join(folder, 'dataset.json')
+            config_json = os.path.join(folder, 'config.json')
+
+            if os.path.exists(dataset_json):
+                try:
+                    with open(dataset_json, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        datasets.append(data)
+                except Exception as e:
+                    print(f"Error loading {dataset_json}: {e}")
+            elif os.path.exists(config_json):
+                try:
+                    with open(config_json, 'r', encoding='utf-8') as f:
+                        cfg = json.load(f)
+                        datasets.append({
+                            **cfg,
+                            'images': [],
+                            'textItems': [],
+                            'audioItems': [],
+                            'activeImageId': None,
+                        })
+                except Exception as e:
+                    print(f"Error loading {config_json}: {e}")
+
+    # Sort newest first
+    datasets.sort(key=lambda d: d.get('updatedAt', d.get('createdAt', 0)), reverse=True)
+    return datasets
 
 @app.before_request
 def handle_preflight():
@@ -64,7 +211,92 @@ def health():
         'yt_dlp_version': yt_dlp.version.__version__,
         'mcp_enabled': True,
         'ai_models_enabled': True,
+        'disk_datasets_path': DATASETS_DIR,
     })
+
+# ==============================================================================
+# DISK-BASED DATASET MEMORY (FOLDER PER DATASET WITH CONFIG, IMAGES, ANNOTATIONS)
+# ==============================================================================
+
+@app.route('/api/datasets', methods=['GET', 'OPTIONS'])
+def list_disk_datasets():
+    """Returns all datasets stored in the local file system data/datasets/ directory."""
+    datasets = load_all_datasets_from_disk()
+    return jsonify({
+        'success': True,
+        'total': len(datasets),
+        'datasets': datasets,
+    })
+
+@app.route('/api/datasets/<dataset_id>', methods=['GET', 'OPTIONS'])
+def get_disk_dataset(dataset_id):
+    """Loads a single dataset by ID from its dedicated disk folder."""
+    folder = get_dataset_folder(dataset_id)
+    dataset_json = os.path.join(folder, 'dataset.json')
+    if not os.path.exists(dataset_json):
+        return jsonify({'success': False, 'error': f'Dataset {dataset_id} não encontrado em disco.'}), 404
+    try:
+        with open(dataset_json, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            return jsonify({'success': True, 'dataset': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/datasets', methods=['POST', 'OPTIONS'])
+@app.route('/api/datasets/<dataset_id>', methods=['PUT', 'POST', 'OPTIONS'])
+def save_disk_dataset(dataset_id=None):
+    """
+    Creates or updates a dataset on disk, creating a dedicated folder with:
+    - config.json (metadata & settings)
+    - dataset.json (unified full state)
+    - images/ (physical image files)
+    - annotations/ (YOLO .txt annotation files)
+    """
+    data = request.get_json(silent=True) or {}
+    if not data:
+        return jsonify({'success': False, 'error': 'Payload do dataset ausente'}), 400
+
+    if dataset_id:
+        data['id'] = dataset_id
+
+    try:
+        saved = save_dataset_to_disk(data)
+        return jsonify({
+            'success': True,
+            'message': f"Dataset '{saved.get('name')}' salvo com sucesso em disco.",
+            'dataset': saved,
+            'folder': get_dataset_folder(saved.get('id')),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Falha ao salvar dataset em disco: {str(e)}'}), 500
+
+@app.route('/api/datasets/<dataset_id>', methods=['DELETE', 'OPTIONS'])
+def delete_disk_dataset(dataset_id):
+    """Deletes a dataset and removes its folder and files completely from disk."""
+    folder = get_dataset_folder(dataset_id)
+    if os.path.exists(folder):
+        try:
+            shutil.rmtree(folder)
+            return jsonify({'success': True, 'message': f'Dataset {dataset_id} excluído com sucesso do disco.'})
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Erro ao deletar pasta: {str(e)}'}), 500
+    return jsonify({'success': True, 'message': 'Dataset já não existia em disco.'})
+
+@app.route('/api/datasets/<dataset_id>/images/<filename>', methods=['GET', 'OPTIONS'])
+def serve_dataset_image(dataset_id, filename):
+    """Serves an image file directly from the dataset images/ directory."""
+    folder = os.path.join(get_dataset_folder(dataset_id), 'images')
+    if not os.path.exists(os.path.join(folder, filename)):
+        return jsonify({'error': 'Arquivo de imagem não encontrado'}), 404
+    return send_from_directory(folder, filename)
+
+@app.route('/api/datasets/<dataset_id>/audios/<filename>', methods=['GET', 'OPTIONS'])
+def serve_dataset_audio(dataset_id, filename):
+    """Serves an audio file directly from the dataset audios/ directory."""
+    folder = os.path.join(get_dataset_folder(dataset_id), 'audios')
+    if not os.path.exists(os.path.join(folder, filename)):
+        return jsonify({'error': 'Arquivo de áudio não encontrado'}), 404
+    return send_from_directory(folder, filename)
 
 @app.route('/api/ai/models', methods=['GET', 'OPTIONS'])
 def list_ai_models():

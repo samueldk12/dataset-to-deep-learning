@@ -1,0 +1,89 @@
+{
+  "id": "proj_default_vision",
+  "name": "Dataset de Visão & Trânsito Urbano",
+  "description": "Dataset multimodal com caixas delimitadoras, segmentação poligonal e keypoints.",
+  "domain": "vision",
+  "taskType": "object_detection",
+  "classes": [
+    {
+      "id": "c1",
+      "name": "Veículo",
+      "color": "#3b82f6",
+      "shortcutKey": "1",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "c2",
+      "name": "Pedestre",
+      "color": "#10b981",
+      "shortcutKey": "2",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "c3",
+      "name": "Placa_Pare",
+      "color": "#ef4444",
+      "shortcutKey": "3",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "c4",
+      "name": "Semáforo",
+      "color": "#f59e0b",
+      "shortcutKey": "4",
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "classSets": [
+    {
+      "id": "set_standard",
+      "name": "YOLOv11 Trânsito Geral",
+      "classes": [
+        {
+          "id": "c1",
+          "name": "Veículo",
+          "color": "#3b82f6",
+          "shortcutKey": "1",
+          "visible": true,
+          "locked": false
+        },
+        {
+          "id": "c2",
+          "name": "Pedestre",
+          "color": "#10b981",
+          "shortcutKey": "2",
+          "visible": true,
+          "locked": false
+        },
+        {
+          "id": "c3",
+          "name": "Placa_Pare",
+          "color": "#ef4444",
+          "shortcutKey": "3",
+          "visible": true,
+          "locked": false
+        },
+        {
+          "id": "c4",
+          "name": "Semáforo",
+          "color": "#f59e0b",
+          "shortcutKey": "4",
+          "visible": true,
+          "locked": false
+        }
+      ],
+      "createdAt": 1787963820679
+    }
+  ],
+  "activeClassSetId": "set_standard",
+  "imagesCount": 2,
+  "textItemsCount": 0,
+  "audioItemsCount": 1,
+  "folderPath": "C:\\Users\\samue\\Documents\\antigravity\\modest-hypatia\\data\\datasets\\proj_default_vision",
+  "createdAt": 1787963820679,
+  "updatedAt": 1787963820965
+}

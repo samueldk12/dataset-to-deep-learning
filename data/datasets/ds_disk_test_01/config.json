@@ -1,0 +1,27 @@
+{
+  "id": "ds_disk_test_01",
+  "name": "Dataset de Teste em Disco",
+  "description": "Dataset com armazenamento em pasta local",
+  "domain": "vision",
+  "taskType": "object_detection",
+  "classes": [
+    {
+      "color": "#ef4444",
+      "name": "Carro",
+      "id": "c1"
+    },
+    {
+      "color": "#10b981",
+      "name": "Pedestre",
+      "id": "c2"
+    }
+  ],
+  "classSets": [],
+  "activeClassSetId": null,
+  "imagesCount": 1,
+  "textItemsCount": 0,
+  "audioItemsCount": 0,
+  "folderPath": "C:\\Users\\samue\\Documents\\antigravity\\modest-hypatia\\data\\datasets\\ds_disk_test_01",
+  "createdAt": 1787963768512,
+  "updatedAt": 1787963768512
+}

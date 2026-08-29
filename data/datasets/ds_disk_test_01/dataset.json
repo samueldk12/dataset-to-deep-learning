@@ -1,0 +1,47 @@
+{
+  "id": "ds_disk_test_01",
+  "name": "Dataset de Teste em Disco",
+  "domain": "vision",
+  "description": "Dataset com armazenamento em pasta local",
+  "classes": [
+    {
+      "color": "#ef4444",
+      "name": "Carro",
+      "id": "c1"
+    },
+    {
+      "color": "#10b981",
+      "name": "Pedestre",
+      "id": "c2"
+    }
+  ],
+  "images": [
+    {
+      "id": "img_01",
+      "name": "amostra.jpg",
+      "width": 800,
+      "annotations": [
+        {
+          "classId": "c1",
+          "id": "ann_1",
+          "type": "bbox",
+          "points": [
+            {
+              "y": 100,
+              "x": 100
+            },
+            {
+              "y": 250,
+              "x": 300
+            }
+          ]
+        }
+      ],
+      "url": "http://localhost:5000/api/datasets/ds_disk_test_01/images/img_01.jpg",
+      "height": 600,
+      "diskPath": "C:\\Users\\samue\\Documents\\antigravity\\modest-hypatia\\data\\datasets\\ds_disk_test_01\\images\\img_01.jpg"
+    }
+  ],
+  "taskType": "object_detection",
+  "updatedAt": 1787963768512
+}

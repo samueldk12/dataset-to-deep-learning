@@ -41,7 +41,13 @@ import {
 } from './types/dataset';
 import { ToolType, CanvasTransform, ImageFilters } from './types/canvas';
 import { createSampleDataset } from './utils/sampleDatasets';
-import { saveProjectToStorage, loadProjectFromStorage } from './utils/storage';
+import { 
+  saveProjectToStorage, 
+  loadProjectFromStorage, 
+  saveProjectToDisk, 
+  loadProjectsFromDisk, 
+  deleteProjectFromDisk 
+} from './utils/storage';
 import { computeConvexHull, mergeAnnotations } from './utils/geometry';
 import { 
   autoClassifyAnnotation, 
@@ -121,18 +127,27 @@ export const App: React.FC = () => {
 
   const quickFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load saved state on mount
+  // Load saved datasets on mount (from disk folder API or local storage)
   useEffect(() => {
-    loadProjectFromStorage().then((saved) => {
-      if (saved && saved.id) {
-        setProjects((prev) => [saved, ...prev.filter((p) => p.id !== saved.id)]);
-        setCurrentProjectId(saved.id);
-        if (saved.classes?.[0]?.id) setActiveClassId(saved.classes[0].id);
+    loadProjectsFromDisk().then((diskDatasets) => {
+      if (diskDatasets && diskDatasets.length > 0) {
+        setProjects(diskDatasets);
+        setCurrentProjectId(diskDatasets[0].id);
+        setCurrentView(diskDatasets[0].domain);
+        if (diskDatasets[0].classes?.[0]?.id) setActiveClassId(diskDatasets[0].classes[0].id);
+      } else {
+        loadProjectFromStorage().then((saved) => {
+          if (saved && saved.id) {
+            setProjects((prev) => [saved, ...prev.filter((p) => p.id !== saved.id)]);
+            setCurrentProjectId(saved.id);
+            if (saved.classes?.[0]?.id) setActiveClassId(saved.classes[0].id);
+          }
+        });
       }
     });
   }, []);
 
-  // Save current project changes to localStorage with debouncing
+  // Save current project changes to disk folder and storage with debouncing
   useEffect(() => {
     if (currentProject) {
       saveProjectToStorage(currentProject);
@@ -233,6 +248,8 @@ export const App: React.FC = () => {
     if (newProject.classes?.[0]?.id) {
       setActiveClassId(newProject.classes[0].id);
     }
+    // Create folder and files immediately on local disk
+    saveProjectToDisk(newProject);
   };
 
   const handleSelectProject = (id: string) => {

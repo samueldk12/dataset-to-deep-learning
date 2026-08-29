@@ -1,0 +1,82 @@
+{
+  "id": "proj_1787963797038_xemy",
+  "name": "Extractive QA (Estilo SQuAD) Dataset",
+  "description": "Padrão de benchmark SQuAD para treinar BERT, RoBERTa e DeBERTa a responder dúvidas citando passagens do texto.",
+  "domain": "nlp",
+  "taskType": "extractive_qa",
+  "classSets": [
+    {
+      "id": "cset_1787963797038_1",
+      "name": "Conjunto Padrão",
+      "classes": [
+        {
+          "id": "cls_1787963797038_0",
+          "name": "Pergunta",
+          "color": "#3b82f6",
+          "shortcutKey": "1",
+          "visible": true,
+          "locked": false
+        },
+        {
+          "id": "cls_1787963797038_1",
+          "name": "Resposta",
+          "color": "#10b981",
+          "shortcutKey": "2",
+          "visible": true,
+          "locked": false
+        },
+        {
+          "id": "cls_1787963797038_2",
+          "name": "Contexto",
+          "color": "#f59e0b",
+          "shortcutKey": "3",
+          "visible": true,
+          "locked": false
+        }
+      ],
+      "createdAt": 1787963797038
+    }
+  ],
+  "activeClassSetId": "cset_1787963797038_1",
+  "classes": [
+    {
+      "id": "cls_1787963797038_0",
+      "name": "Pergunta",
+      "color": "#3b82f6",
+      "shortcutKey": "1",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787963797038_1",
+      "name": "Resposta",
+      "color": "#10b981",
+      "shortcutKey": "2",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787963797038_2",
+      "name": "Contexto",
+      "color": "#f59e0b",
+      "shortcutKey": "3",
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "images": [],
+  "activeImageId": null,
+  "textItems": [],
+  "qaItems": [],
+  "sqlItems": [],
+  "cotItems": [],
+  "toolCallItems": [],
+  "ragItems": [],
+  "corefItems": [],
+  "relationItems": [],
+  "sentencePairItems": [],
+  "audioItems": [],
+  "llmItems": [],
+  "createdAt": 1787963797038,
+  "updatedAt": 1787963797688
+}

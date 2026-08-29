@@ -1,0 +1,319 @@
+{
+  "id": "proj_default_vision",
+  "name": "Dataset de Visão & Trânsito Urbano",
+  "description": "Dataset multimodal com caixas delimitadoras, segmentação poligonal e keypoints.",
+  "domain": "vision",
+  "taskType": "object_detection",
+  "classSets": [
+    {
+      "id": "set_standard",
+      "name": "YOLOv11 Trânsito Geral",
+      "classes": [
+        {
+          "id": "c1",
+          "name": "Veículo",
+          "color": "#3b82f6",
+          "shortcutKey": "1",
+          "visible": true,
+          "locked": false
+        },
+        {
+          "id": "c2",
+          "name": "Pedestre",
+          "color": "#10b981",
+          "shortcutKey": "2",
+          "visible": true,
+          "locked": false
+        },
+        {
+          "id": "c3",
+          "name": "Placa_Pare",
+          "color": "#ef4444",
+          "shortcutKey": "3",
+          "visible": true,
+          "locked": false
+        },
+        {
+          "id": "c4",
+          "name": "Semáforo",
+          "color": "#f59e0b",
+          "shortcutKey": "4",
+          "visible": true,
+          "locked": false
+        }
+      ],
+      "createdAt": 1787963820336
+    }
+  ],
+  "activeClassSetId": "set_standard",
+  "classes": [
+    {
+      "id": "c1",
+      "name": "Veículo",
+      "color": "#3b82f6",
+      "shortcutKey": "1",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "c2",
+      "name": "Pedestre",
+      "color": "#10b981",
+      "shortcutKey": "2",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "c3",
+      "name": "Placa_Pare",
+      "color": "#ef4444",
+      "shortcutKey": "3",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "c4",
+      "name": "Semáforo",
+      "color": "#f59e0b",
+      "shortcutKey": "4",
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "images": [
+    {
+      "id": "img_sample_1",
+      "name": "avenida_central_01.jpg",
+      "url": "data:image/jpeg;base64,mocked",
+      "width": 800,
+      "height": 600,
+      "annotations": [
+        {
+          "id": "ann_1",
+          "classId": "c1",
+          "type": "bbox",
+          "points": [
+            {
+              "x": 80,
+              "y": 345
+            },
+            {
+              "x": 300,
+              "y": 495
+            }
+          ]
+        },
+        {
+          "id": "ann_2",
+          "classId": "c2",
+          "type": "polygon",
+          "points": [
+            {
+              "x": 420,
+              "y": 374
+            },
+            {
+              "x": 460,
+              "y": 374
+            },
+            {
+              "x": 460,
+              "y": 491
+            },
+            {
+              "x": 420,
+              "y": 491
+            }
+          ]
+        },
+        {
+          "id": "ann_3",
+          "classId": "c3",
+          "type": "circle",
+          "points": [
+            {
+              "x": 722,
+              "y": 340
+            },
+            {
+              "x": 750,
+              "y": 340
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "urbano",
+        "diurno"
+      ],
+      "status": "completed"
+    },
+    {
+      "id": "img_sample_2",
+      "name": "cruzamento_norte_02.jpg",
+      "url": "data:image/jpeg;base64,mocked",
+      "width": 800,
+      "height": 600,
+      "annotations": [
+        {
+          "id": "ann_4",
+          "classId": "c1",
+          "type": "bbox",
+          "points": [
+            {
+              "x": 300,
+              "y": 355
+            },
+            {
+              "x": 520,
+              "y": 505
+            }
+          ]
+        }
+      ],
+      "tags": [
+        "cruzamento"
+      ],
+      "status": "in_progress"
+    }
+  ],
+  "qaItems": [
+    {
+      "id": "qa_1",
+      "context": "A arquitetura Transformer foi introduzida no artigo Attention Is All You Need em 2017 por pesquisadores do Google Brain.",
+      "question": "Em que ano a arquitetura Transformer foi introduzida?",
+      "answerStart": 66,
+      "answerEnd": 70,
+      "answerText": "2017"
+    },
+    {
+      "id": "qa_2",
+      "context": "O algoritmo YOLO processa a imagem inteira em uma única passagem para detectar caixas delimitadoras e classes simultaneamente.",
+      "question": "Como o algoritmo YOLO detecta objetos?",
+      "answerStart": 24,
+      "answerEnd": 60,
+      "answerText": "em uma única passagem para detectar"
+    }
+  ],
+  "sqlItems": [
+    {
+      "id": "sql_1",
+      "question": "Quais clientes fizeram compras com valor superior a R$ 500 no mês passado?",
+      "databaseSchema": "CREATE TABLE pedidos (\n  id INT,\n  cliente_id INT,\n  valor DECIMAL(10,2),\n  data_pedido DATE\n);",
+      "sql": "SELECT cliente_id, SUM(valor) AS total\nFROM pedidos\nWHERE valor > 500\n  AND data_pedido >= DATE_SUB(CURRENT_DATE, INTERVAL 1 MONTH)\nGROUP BY cliente_id;"
+    }
+  ],
+  "cotItems": [
+    {
+      "id": "cot_1",
+      "prompt": "Se uma fábrica produz 120 peças por hora e funciona 8 horas por dia durante 5 dias, quantas peças são produzidas por semana?",
+      "thought": "1. Calculo a produção diária: 120 peças/hora * 8 horas = 960 peças por dia.\n2. Multiplico pelo número de dias da semana: 960 peças/dia * 5 dias = 4800 peças por semana.",
+      "response": "A fábrica produz exatamente 4.800 peças por semana.",
+      "difficulty": "easy"
+    }
+  ],
+  "toolCallItems": [
+    {
+      "id": "tc_1",
+      "prompt": "Qual o saldo atual da conta bancária 88921?",
+      "availableTools": [
+        {
+          "name": "get_account_balance",
+          "description": "Consulta saldo de conta bancária por ID",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "account_id": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ],
+      "chosenToolCall": {
+        "name": "get_account_balance",
+        "arguments": {
+          "account_id": "88921"
+        }
+      },
+      "finalResponse": "O saldo da conta bancária 88921 é de R$ 14.520,00."
+    }
+  ],
+  "ragItems": [
+    {
+      "id": "rag_1",
+      "query": "Como calcular métricas de mAP em detecção de objetos?",
+      "positivePassage": "A métrica Mean Average Precision (mAP) é a média da área sob a curva Precision-Recall calculada para todas as classes em limiares de IoU (tipicamente 0.50 a 0.95).",
+      "negativePassages": [
+        "A acurácia tradicional mede a proporção de acertos sobre o total de amostras.",
+        "O gradiente descendente estocástico atualiza os pesos da rede."
+      ]
+    }
+  ],
+  "audioItems": [
+    {
+      "id": "aud_1",
+      "name": "chamada_central_seguranca_01.wav",
+      "audioUrl": "https://actions.google.com/sounds/v1/ambiences/outdoor_ambience.ogg",
+      "durationSec": 8.4,
+      "transcription": "Operador 1 confirmando liberação de acesso na guarita norte.",
+      "status": "completed",
+      "diarizationSegments": [
+        {
+          "id": "d1",
+          "start": 0,
+          "end": 3.8,
+          "speaker": "Operador_1",
+          "text": "Confirmando liberação de acesso na guarita norte."
+        },
+        {
+          "id": "d2",
+          "start": 4.2,
+          "end": 8,
+          "speaker": "Central_Segurança",
+          "text": "Acesso liberado com sucesso."
+        }
+      ],
+      "soundEvents": [
+        {
+          "id": "e1",
+          "start": 0.5,
+          "end": 2,
+          "event": "voz_humana"
+        },
+        {
+          "id": "e2",
+          "start": 3.9,
+          "end": 4.1,
+          "event": "beep_radio"
+        }
+      ],
+      "alignmentWords": [
+        {
+          "word": "Operador",
+          "start": 0,
+          "end": 0.6
+        },
+        {
+          "word": "1",
+          "start": 0.65,
+          "end": 0.9
+        },
+        {
+          "word": "confirmando",
+          "start": 0.95,
+          "end": 1.6
+        },
+        {
+          "word": "liberação",
+          "start": 1.65,
+          "end": 2.3
+        }
+      ],
+      "label": "Segurança_Operacional"
+    }
+  ],
+  "activeImageId": "img_sample_1",
+  "createdAt": 1787963820336,
+  "updatedAt": 1787963820964
+}
