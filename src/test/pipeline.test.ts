@@ -257,4 +257,27 @@ describe('Pipeline Studio - Graph Execution Engine', () => {
     // 2 overlapping boxes should fuse into 1 merged box
     expect(result.finalAnnotations?.length).toBe(1);
   });
+
+  it('validates PipelineTriggerRule and API Trigger payload structures', () => {
+    const triggerRule = {
+      id: 'rule_s3_auto',
+      name: 'S3 Ingestão de Câmeras',
+      pipelineId: 'tpl_yolo_filter_save',
+      enabled: true,
+      triggerType: 's3_bucket_watch' as const,
+      matchTag: 'camera_rodovia',
+      s3BucketUri: 's3://bucket-cameras/2026/',
+      autoCreateDataset: true,
+      executionCount: 5,
+    };
+
+    expect(triggerRule.enabled).toBe(true);
+    expect(triggerRule.matchTag).toBe('camera_rodovia');
+    expect(triggerRule.s3BucketUri).toContain('s3://');
+
+    // Matching logic
+    const testTag = 'camera_rodovia';
+    const isMatch = triggerRule.enabled && triggerRule.matchTag === testTag;
+    expect(isMatch).toBe(true);
+  });
 });

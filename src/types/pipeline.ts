@@ -116,3 +116,35 @@ export interface PipelineExecutionResult {
   augmentedImages?: DatasetImage[];
   error?: string;
 }
+
+export type TriggerRuleType = 'tag_match' | 's3_bucket_watch' | 'api_webhook' | 'domain_match';
+
+export interface PipelineTriggerRule {
+  id: string;
+  name: string;
+  pipelineId: string;
+  pipelineName?: string;
+  enabled: boolean;
+  triggerType: TriggerRuleType;
+  matchTag?: string;
+  s3BucketUri?: string;
+  webhookCallbackUrl?: string;
+  autoCreateDataset?: boolean;
+  datasetNameTemplate?: string;
+  paramsOverride?: Record<string, any>;
+  lastTriggeredAt?: number;
+  executionCount: number;
+}
+
+export interface PipelineAPITriggerPayload {
+  pipeline_id: string;
+  dataset_id?: string;
+  dataset_name?: string;
+  dataset_path?: string;
+  s3_uri?: string;
+  tag?: string;
+  image_urls?: string[];
+  params_override?: Record<string, any>;
+  webhook_callback_url?: string;
+}
+

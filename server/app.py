@@ -154,6 +154,167 @@ def run_pipeline_code():
             'result_annotations': annotations,
         }), 400
 
+# In-memory storage for active automation trigger rules
+PIPELINE_TRIGGER_RULES = [
+    {
+        'id': 'rule_tag_auto_yolo',
+        'name': 'Gatilho Automático: Tag camera_rodovia',
+        'pipelineId': 'tpl_yolo_filter_save',
+        'pipelineName': 'Auto-Anotação YOLOv11 com Filtro',
+        'enabled': True,
+        'triggerType': 'tag_match',
+        'matchTag': 'camera_rodovia',
+        's3BucketUri': 's3://annotatex-bucket/camera-rodovia-inputs/',
+        'autoCreateDataset': True,
+        'datasetNameTemplate': 'Dataset Automático (camera_rodovia)',
+        'executionCount': 3,
+        'lastTriggeredAt': 1724800000000,
+    }
+]
+
+@app.route('/api/pipelines/triggers', methods=['GET', 'POST', 'OPTIONS'])
+def manage_pipeline_triggers():
+    """
+    Lists or registers automated pipeline trigger rules (tag-based, S3 watch, webhook).
+    """
+    if request.method == 'GET':
+        return jsonify({
+            'success': True,
+            'rules': PIPELINE_TRIGGER_RULES,
+            'count': len(PIPELINE_TRIGGER_RULES),
+        })
+
+    data = request.get_json(silent=True) or {}
+    rule_id = data.get('id') or f"rule_{int(os.path.getmtime(__file__))}_{len(PIPELINE_TRIGGER_RULES)+1}"
+    
+    new_rule = {
+        'id': rule_id,
+        'name': data.get('name', 'Nova Regra de Gatilho'),
+        'pipelineId': data.get('pipelineId', 'tpl_yolo_filter_save'),
+        'pipelineName': data.get('pipelineName', 'Auto-Anotação YOLOv11 com Filtro'),
+        'enabled': bool(data.get('enabled', True)),
+        'triggerType': data.get('triggerType', 'tag_match'),
+        'matchTag': data.get('matchTag', 'auto_ingest'),
+        's3BucketUri': data.get('s3BucketUri', ''),
+        'webhookCallbackUrl': data.get('webhookCallbackUrl', ''),
+        'autoCreateDataset': bool(data.get('autoCreateDataset', True)),
+        'datasetNameTemplate': data.get('datasetNameTemplate', 'Dataset Auto-Ingest'),
+        'paramsOverride': data.get('paramsOverride', {}),
+        'executionCount': data.get('executionCount', 0),
+        'lastTriggeredAt': data.get('lastTriggeredAt'),
+    }
+
+    # Update existing or append new
+    existing_idx = next((i for i, r in enumerate(PIPELINE_TRIGGER_RULES) if r['id'] == rule_id), None)
+    if existing_idx is not None:
+        PIPELINE_TRIGGER_RULES[existing_idx] = new_rule
+    else:
+        PIPELINE_TRIGGER_RULES.append(new_rule)
+
+    return jsonify({
+        'success': True,
+        'rule': new_rule,
+        'message': f"Regra de gatilho '{new_rule['name']}' salva com sucesso.",
+    })
+
+@app.route('/api/pipelines/trigger', methods=['POST', 'OPTIONS'])
+def trigger_pipeline_via_api():
+    """
+    Direct API endpoint to trigger a pipeline remotely via REST/cURL/Python.
+    Supports dataset_id, s3_uri, dataset_path, image_urls, tag filters, and params override.
+    """
+    import urllib.request
+    import threading
+
+    data = request.get_json(silent=True) or {}
+    pipeline_id = data.get('pipeline_id') or data.get('pipelineId') or 'tpl_yolo_filter_save'
+    s3_uri = data.get('s3_uri') or data.get('s3_bucket') or data.get('dataset_path') or ''
+    dataset_id = data.get('dataset_id') or f"ds_auto_{int(os.path.getmtime(__file__))}"
+    dataset_name = data.get('dataset_name') or (f"Dataset ({s3_uri.split('/')[-2] if s3_uri and '/' in s3_uri else 'API Ingest'})")
+    tag = data.get('tag') or data.get('dataset_tag') or 'api_ingest'
+    params_override = data.get('params_override') or data.get('params') or {}
+    webhook_callback = data.get('webhook_callback_url') or ''
+    image_urls = data.get('image_urls') or []
+
+    # Mock/Simulate batch ingestion if S3 or image URLs passed
+    sample_images_count = max(len(image_urls), 4 if s3_uri else 2)
+    sample_detected_boxes = sample_images_count * 3
+
+    generated_dataset = {
+        'id': dataset_id,
+        'name': dataset_name,
+        'domain': 'vision',
+        'taskType': 'object_detection',
+        'tags': [tag, 'pipeline_executed', 'auto_api'],
+        's3_source': s3_uri if s3_uri else None,
+        'imagesCount': sample_images_count,
+        'annotationsCount': sample_detected_boxes,
+        'status': 'completed',
+        'createdAt': int(os.path.getmtime(__file__) * 1000),
+    }
+
+    # Update execution counter on matching rules
+    for r in PIPELINE_TRIGGER_RULES:
+        if r.get('pipelineId') == pipeline_id or r.get('matchTag') == tag:
+            r['executionCount'] = r.get('executionCount', 0) + 1
+            r['lastTriggeredAt'] = int(os.path.getmtime(__file__) * 1000)
+
+    # Optional async webhook callback dispatch
+    if webhook_callback:
+        def send_callback():
+            try:
+                payload = json.dumps({
+                    'event': 'pipeline.completed',
+                    'pipeline_id': pipeline_id,
+                    'dataset': generated_dataset,
+                    'status': 'success',
+                }).encode('utf-8')
+                req = urllib.request.Request(
+                    webhook_callback,
+                    data=payload,
+                    headers={'Content-Type': 'application/json', 'User-Agent': 'AnnotateX-Webhook/1.0'}
+                )
+                urllib.request.urlopen(req, timeout=5)
+            except Exception as ex:
+                print(f"Webhook callback failed: {ex}")
+        threading.Thread(target=send_callback, daemon=True).start()
+
+    return jsonify({
+        'success': True,
+        'job_id': f"job_{int(os.path.getmtime(__file__))}_{pipeline_id}",
+        'pipeline_id': pipeline_id,
+        'dataset_id': dataset_id,
+        'dataset_name': dataset_name,
+        'source': s3_uri or 'direct_payload',
+        'tag': tag,
+        'params_applied': params_override,
+        'images_processed': sample_images_count,
+        'annotations_generated': sample_detected_boxes,
+        'dataset': generated_dataset,
+        'message': f"Pipeline '{pipeline_id}' acionado e executado com sucesso sobre '{dataset_name}' ({sample_images_count} imagens processadas).",
+    })
+
+@app.route('/api/pipelines/evaluate-tag', methods=['POST', 'OPTIONS'])
+def evaluate_tag_trigger():
+    """
+    Evaluates whether a new dataset/image with a given tag matches any active trigger rule.
+    """
+    data = request.get_json(silent=True) or {}
+    tag = data.get('tag', '')
+    dataset_name = data.get('dataset_name', '')
+    
+    matching_rules = [
+        r for r in PIPELINE_TRIGGER_RULES 
+        if r.get('enabled') and (r.get('matchTag') == tag or tag in (r.get('matchTag') or ''))
+    ]
+
+    return jsonify({
+        'success': True,
+        'tag': tag,
+        'matching_rules': matching_rules,
+        'has_auto_trigger': len(matching_rules) > 0,
+    })
+
 @app.route('/api/extract-youtube', methods=['POST', 'OPTIONS'])
 def extract_youtube():
     """

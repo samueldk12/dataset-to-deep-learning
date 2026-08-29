@@ -18,10 +18,11 @@ import {
   Save,
   ArrowLeft,
   Search,
-  Database,
-  Edit3,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Globe,
+  Database,
+  Edit3
 } from 'lucide-react';
 import { 
   AnnotationPipeline, 
@@ -38,6 +39,7 @@ import { NodeCard } from '../Pipeline/NodeCard';
 import { BezierEdge } from '../Pipeline/BezierEdge';
 import { NodePalette } from '../Pipeline/NodePalette';
 import { NewPipelineModal } from '../Modals/NewPipelineModal';
+import { PipelineTriggerModal } from '../Modals/PipelineTriggerModal';
 
 interface PipelineStudioWorkspaceProps {
   project: DatasetProject;
@@ -80,6 +82,8 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
 
   // Modal State
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [isTriggerModalOpen, setIsTriggerModalOpen] = useState(false);
+  const [triggerPipeline, setTriggerPipeline] = useState<AnnotationPipeline | undefined>(undefined);
   const [searchFilter, setSearchFilter] = useState('');
 
   // Left Sidebar State
@@ -456,13 +460,27 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
               </div>
             </div>
 
-            <button
-              onClick={() => setIsNewModalOpen(true)}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs shadow-lg shadow-purple-600/20 transition-all active:scale-98"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Criar Novo Pipeline</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setTriggerPipeline(undefined);
+                  setIsTriggerModalOpen(true);
+                }}
+                className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-200 border border-slate-700 hover:border-slate-600 font-semibold text-xs transition-colors"
+                title="Configurar gatilhos automáticos, S3 bucket watch e comandos de API cURL / Python"
+              >
+                <Globe className="w-4 h-4 text-purple-400" />
+                <span>API & Gatilhos (Triggers)</span>
+              </button>
+
+              <button
+                onClick={() => setIsNewModalOpen(true)}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs shadow-lg shadow-purple-600/20 transition-all active:scale-98"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Criar Novo Pipeline</span>
+              </button>
+            </div>
           </div>
 
           {/* Search & Filter Bar */}
@@ -535,6 +553,17 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
                     </button>
 
                     <button
+                      onClick={() => {
+                        setTriggerPipeline(pipe);
+                        setIsTriggerModalOpen(true);
+                      }}
+                      title="Ver comandos de API REST, cURL e Gatilhos automáticos"
+                      className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-purple-300 transition-colors"
+                    >
+                      <Globe className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
                       onClick={() => handleRunPipeline(false, pipe)}
                       title="Executar este pipeline agora"
                       className="p-2 rounded-lg bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 transition-colors"
@@ -564,6 +593,15 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
           currentProjectId={project.id}
           onOpenNewDatasetModal={onOpenNewDatasetModal}
           onCreatePipeline={handleCreateNewPipeline}
+        />
+
+        {/* Modal: API & Triggers */}
+        <PipelineTriggerModal
+          isOpen={isTriggerModalOpen}
+          onClose={() => setIsTriggerModalOpen(false)}
+          pipeline={triggerPipeline || activePipeline}
+          pipelines={savedPipelines}
+          projects={projects}
         />
       </div>
     );
@@ -686,15 +724,28 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
             title="Executar pipeline em lote sobre todas as imagens do dataset"
           >
             <Zap className="w-3.5 h-3.5 text-yellow-400" />
-            <span className="hidden md:inline">Em Lote ({targetProject.images?.length || 0})</span>
+                      <span className="hidden md:inline">Em Lote ({targetProject.images?.length || 0})</span>
           </button>
 
           <div className="w-[1px] h-5 bg-slate-800" />
 
+          {/* API & Gatilhos */}
+          <button
+            onClick={() => {
+              setTriggerPipeline(activePipeline);
+              setIsTriggerModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-200 border border-slate-700 hover:border-slate-600 text-xs font-semibold transition-colors"
+            title="Ver comandos de API REST / cURL e Gatilhos por Tag e Bucket S3"
+          >
+            <Globe className="w-3.5 h-3.5 text-purple-400" />
+            <span>API & Gatilhos</span>
+          </button>
+
           {/* New Pipeline */}
           <button
             onClick={() => setIsNewModalOpen(true)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-medium transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-800 text-xs font-medium transition-colors"
             title="Criar outro pipeline"
           >
             <Plus className="w-3.5 h-3.5 text-purple-400" />
@@ -850,6 +901,15 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
         currentProjectId={project.id}
         onOpenNewDatasetModal={onOpenNewDatasetModal}
         onCreatePipeline={handleCreateNewPipeline}
+      />
+
+      {/* Modal: API & Triggers */}
+      <PipelineTriggerModal
+        isOpen={isTriggerModalOpen}
+        onClose={() => setIsTriggerModalOpen(false)}
+        pipeline={triggerPipeline || activePipeline}
+        pipelines={savedPipelines}
+        projects={projects}
       />
     </div>
   );

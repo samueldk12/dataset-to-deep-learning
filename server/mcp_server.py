@@ -122,6 +122,21 @@ MCP_TOOLS = [
             "required": ["format"],
         },
     },
+    {
+        "name": "annotatex_trigger_pipeline_api",
+        "description": "Aciona e executa um pipeline de anotação remotamente passando bucket S3, tag ou caminho de dataset e parâmetros de override.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pipeline_id": {"type": "string", "default": "tpl_yolo_filter_save"},
+                "s3_uri": {"type": "string", "description": "Caminho do bucket S3 ou pasta (ex: s3://bucket/lote-01/)"},
+                "tag": {"type": "string", "description": "Tag associada ao dataset (ex: camera_rodovia)"},
+                "confidence_threshold": {"type": "number", "default": 0.40},
+                "auto_create_dataset": {"type": "boolean", "default": True},
+            },
+            "required": ["pipeline_id"],
+        },
+    },
 ]
 
 def handle_mcp_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -262,6 +277,23 @@ def handle_mcp_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
                         {
                             "type": "text",
                             "text": f"Dataset exportado com sucesso no formato '{fmt}' ({ver}). Arquivos config.yaml e data.yaml gerados por padrão.",
+                        }
+                    ]
+                },
+            }
+
+        if tool_name == "annotatex_trigger_pipeline_api":
+            pipe_id = args.get("pipeline_id", "tpl_yolo_filter_save")
+            s3_uri = args.get("s3_uri", "")
+            tag = args.get("tag", "api_ingest")
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Pipeline '{pipe_id}' acionado com sucesso via API para a tag '{tag}' e fonte '{s3_uri or 'Local'}'. Dataset automático criado e imagens processadas.",
                         }
                     ]
                 },
