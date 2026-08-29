@@ -620,50 +620,53 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
       onWheel={handleWheel}
     >
       {/* 1. TOP PIPELINE CONTROL BAR */}
-      <div className="h-14 bg-slate-950/90 border-b border-slate-800 px-4 flex items-center justify-between z-30 shrink-0 backdrop-blur-md">
-        {/* Left: Back to List & Pipeline Title */}
-        <div className="flex items-center gap-3">
+      <header className="h-12 bg-slate-950/95 border-b border-slate-800/80 px-3.5 flex items-center justify-between z-30 shrink-0 backdrop-blur-md">
+        {/* Left: Back to List, Sidebar Toggle, Pipeline Title & Dataset Selector */}
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => setViewMode('list')}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold transition-colors border border-slate-800"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-semibold transition-colors shrink-0 shadow-sm"
             title="Voltar para a lista de todos os pipelines"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Todos os Pipelines</span>
+            <span>Pipelines</span>
           </button>
-
-          <div className="w-[1px] h-5 bg-slate-800" />
 
           {/* Toggle Left Sidebar */}
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className={`p-1.5 rounded-lg text-xs font-medium border transition-colors ${
+            className={`p-1.5 rounded-lg text-xs font-medium border transition-colors shrink-0 ${
               isSidebarOpen
-                ? 'bg-blue-600/20 text-blue-300 border-blue-500/40'
-                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                ? 'bg-purple-600/20 text-purple-300 border-purple-500/40 shadow-sm'
+                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white hover:bg-slate-850'
             }`}
             title="Mostrar / Ocultar Menu de Nodos à Esquerda"
           >
-            {isSidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+            {isSidebarOpen ? <PanelLeftClose className="w-3.5 h-3.5" /> : <PanelLeftOpen className="w-3.5 h-3.5" />}
           </button>
 
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-purple-600/20 text-purple-400 border border-purple-500/30">
-              <Workflow className="w-4 h-4" />
+          <div className="w-[1px] h-4 bg-slate-800 shrink-0" />
+
+          {/* Pipeline Title & Node Stats */}
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="p-1 rounded-md bg-purple-600/20 text-purple-400 border border-purple-500/30 shrink-0">
+              <Workflow className="w-3.5 h-3.5" />
             </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-xs text-white">{activePipeline.name}</span>
-              <span className="text-[10px] text-slate-400">
+            <div className="flex flex-col min-w-0">
+              <span className="font-bold text-xs text-white truncate max-w-[180px] md:max-w-[240px]">
+                {activePipeline.name}
+              </span>
+              <span className="text-[9px] text-slate-400 font-mono whitespace-nowrap">
                 {activePipeline.nodes.length} Nodos • {activePipeline.edges.length} Conexões
               </span>
             </div>
           </div>
 
-          <div className="w-[1px] h-5 bg-slate-800" />
+          <div className="w-[1px] h-4 bg-slate-800 shrink-0" />
 
           {/* Dataset Binding Switcher */}
-          <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs">
-            <Database className="w-3.5 h-3.5 text-emerald-400" />
+          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800/80 rounded-lg px-2.5 py-1 text-xs shrink-0">
+            <Database className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
             <select
               value={activePipeline.projectId || project.id}
               onChange={(e) => {
@@ -676,7 +679,7 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
                   }));
                 }
               }}
-              className="bg-transparent text-slate-200 text-xs focus:outline-none cursor-pointer"
+              className="bg-transparent text-slate-200 text-xs focus:outline-none cursor-pointer truncate max-w-[180px]"
             >
               {projects.map((p) => (
                 <option key={p.id} value={p.id} className="bg-slate-900 text-white">
@@ -689,11 +692,11 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
 
         {/* Center: Execution Progress Indicator */}
         {isExecuting && (
-          <div className="flex items-center gap-3 px-4 py-1.5 rounded-xl bg-slate-900 border border-purple-500/30 animate-pulse">
-            <RefreshCw className="w-4 h-4 text-purple-400 animate-spin" />
+          <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-slate-900 border border-purple-500/30 animate-pulse shrink-0">
+            <RefreshCw className="w-3.5 h-3.5 text-purple-400 animate-spin" />
             <div className="flex flex-col">
               <span className="text-xs font-semibold text-purple-200 truncate max-w-xs">{currentStepName}</span>
-              <div className="w-36 h-1 bg-slate-800 rounded-full mt-1 overflow-hidden">
+              <div className="w-28 h-1 bg-slate-800 rounded-full mt-0.5 overflow-hidden">
                 <div 
                   className="h-full bg-purple-500 transition-all duration-300"
                   style={{ width: `${execProgress}%` }}
@@ -709,7 +712,7 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
           <button
             onClick={() => handleRunPipeline(false)}
             disabled={isExecuting}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition-all shadow-lg shadow-purple-600/20 disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-md shadow-purple-600/25 whitespace-nowrap transition-all active:scale-98 disabled:opacity-50 shrink-0"
             title="Executar pipeline na imagem ativa do dataset"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
@@ -720,14 +723,14 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
           <button
             onClick={() => handleRunPipeline(true)}
             disabled={isExecuting}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-200 border border-slate-700 hover:border-slate-600 text-xs font-medium transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-200 border border-slate-800 hover:border-slate-700 text-xs font-medium whitespace-nowrap transition-colors disabled:opacity-50 shrink-0"
             title="Executar pipeline em lote sobre todas as imagens do dataset"
           >
             <Zap className="w-3.5 h-3.5 text-yellow-400" />
-                      <span className="hidden md:inline">Em Lote ({targetProject.images?.length || 0})</span>
+            <span>Em Lote ({targetProject.images?.length || 0})</span>
           </button>
 
-          <div className="w-[1px] h-5 bg-slate-800" />
+          <div className="w-[1px] h-4 bg-slate-800 shrink-0" />
 
           {/* API & Gatilhos */}
           <button
@@ -735,39 +738,56 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
               setTriggerPipeline(activePipeline);
               setIsTriggerModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-200 border border-slate-700 hover:border-slate-600 text-xs font-semibold transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-800 text-xs font-medium whitespace-nowrap transition-colors shrink-0"
             title="Ver comandos de API REST / cURL e Gatilhos por Tag e Bucket S3"
           >
             <Globe className="w-3.5 h-3.5 text-purple-400" />
-            <span>API & Gatilhos</span>
+            <span>API</span>
           </button>
 
           {/* New Pipeline */}
           <button
             onClick={() => setIsNewModalOpen(true)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-800 text-xs font-medium transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-800 text-xs font-medium whitespace-nowrap transition-colors shrink-0"
             title="Criar outro pipeline"
           >
             <Plus className="w-3.5 h-3.5 text-purple-400" />
             <span>Novo</span>
           </button>
 
-          {/* Reset Zoom */}
-          <button
-            onClick={() => setTransform({ scale: 1, offsetX: 80, offsetY: 60 })}
-            title="Centralizar Visualização"
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-colors font-mono text-xs"
-          >
-            {Math.round(transform.scale * 100)}%
-          </button>
+          {/* Zoom Segment Controller */}
+          <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-0.5 text-xs text-slate-400 shrink-0">
+            <button 
+              onClick={() => setTransform((prev) => ({ ...prev, scale: Math.max(0.3, prev.scale * 0.9) }))} 
+              className="px-1.5 py-0.5 rounded hover:bg-slate-800 hover:text-white font-mono"
+              title="Diminuir Zoom (-)"
+            >
+              -
+            </button>
+            <button 
+              onClick={() => setTransform({ scale: 1, offsetX: 80, offsetY: 60 })} 
+              className="px-2 py-0.5 font-mono text-[10px] hover:text-white"
+              title="Redefinir Zoom para 100%"
+            >
+              {Math.round(transform.scale * 100)}%
+            </button>
+            <button 
+              onClick={() => setTransform((prev) => ({ ...prev, scale: Math.min(2.5, prev.scale * 1.1) }))} 
+              className="px-1.5 py-0.5 rounded hover:bg-slate-800 hover:text-white font-mono"
+              title="Aumentar Zoom (+)"
+            >
+              +
+            </button>
+          </div>
         </div>
-      </div>
+      </header>
 
       {/* 2. MAIN WORKSPACE BODY (LEFT SIDEBAR + GRAPH CANVAS) */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex w-full h-[calc(100%-48px)] overflow-hidden relative">
         {/* LEFT NODE PALETTE SIDEBAR */}
         <NodePalette
           isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
           onAddNode={handleAddNode}
         />
 
