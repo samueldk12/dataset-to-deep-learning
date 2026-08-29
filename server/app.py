@@ -553,22 +553,38 @@ def evaluate_tag_trigger():
         'has_auto_trigger': len(matching_rules) > 0,
     })
 
+@app.route('/api/temp-video/<filename>', methods=['GET', 'OPTIONS'])
+def serve_temp_video(filename):
+    """Serves local downloaded video streams with CORS and byte-range streaming support."""
+    safe_name = os.path.basename(filename)
+    file_path = os.path.join(TEMP_DIR, safe_name)
+    if not os.path.exists(file_path):
+        return jsonify({'error': 'Arquivo de vídeo não encontrado no servidor'}), 404
+    response = send_from_directory(TEMP_DIR, safe_name, mimetype='video/mp4')
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = '*'
+    response.headers['Accept-Ranges'] = 'bytes'
+    return response
+
 @app.route('/api/extract-youtube', methods=['POST', 'OPTIONS'])
 def extract_youtube():
     """
-    Downloads or extracts direct video streaming info from YouTube, Reddit or any URL using yt-dlp.
-    Returns direct stream URL and metadata.
+    Downloads and extracts video from YouTube or any URL using yt-dlp.
+    Saves a fast progressive 720p/480p MP4 stream locally so it plays without CORS restrictions.
     """
     data = request.get_json(silent=True) or request.args or {}
     url = (data.get('url') or data.get('video_url') or data.get('link') or '').strip()
     if not url:
         return jsonify({'error': 'URL de vídeo é obrigatória'}), 400
 
+    filename = f"yt_{int(time.time())}_{abs(hash(url)) % 100000}.mp4"
+    temp_video_path = os.path.join(TEMP_DIR, filename)
+
     ydl_opts = {
-        'format': 'best[ext=mp4]/bestvideo[ext=mp4]/best/bestvideo',
+        'format': 'best[height<=720][ext=mp4]/best[height<=480][ext=mp4]/best[ext=mp4]/best/worst',
+        'outtmpl': temp_video_path,
         'quiet': True,
         'no_warnings': True,
-        'extract_flat': False,
         'noplaylist': True,
     }
     if FFMPEG_EXE:
@@ -576,27 +592,39 @@ def extract_youtube():
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            video_url = info.get('url')
-            # If formats list is available, pick best playable format
-            if not video_url and 'formats' in info:
-                for f in reversed(info['formats']):
-                    if f.get('url'):
-                        video_url = f['url']
-                        break
+            info = ydl.extract_info(url, download=True)
+            title = info.get('title', 'Vídeo da Web')
+            duration = info.get('duration', 0)
+            local_stream_url = f"http://localhost:5000/api/temp-video/{filename}"
 
             return jsonify({
                 'success': True,
-                'title': info.get('title', 'Vídeo do YouTube'),
-                'duration': info.get('duration', 0),
+                'title': title,
+                'duration': duration,
                 'thumbnail': info.get('thumbnail'),
-                'streamUrl': video_url,
-                'video_url': video_url,
+                'streamUrl': local_stream_url,
+                'video_url': local_stream_url,
                 'width': info.get('width', 1280),
                 'height': info.get('height', 720),
             })
     except Exception as e:
-        return jsonify({'error': f'Erro ao processar vídeo: {str(e)}'}), 500
+        # If full download fails, try extracting direct stream url as fallback
+        try:
+            with yt_dlp.YoutubeDL({'quiet': True, 'noplaylist': True}) as ydl_stream:
+                info = ydl_stream.extract_info(url, download=False)
+                video_url = info.get('url')
+                return jsonify({
+                    'success': True,
+                    'title': info.get('title', 'Vídeo da Web'),
+                    'duration': info.get('duration', 0),
+                    'thumbnail': info.get('thumbnail'),
+                    'streamUrl': video_url,
+                    'video_url': video_url,
+                    'width': info.get('width', 1280),
+                    'height': info.get('height', 720),
+                })
+        except Exception as ex:
+            return jsonify({'error': f'Erro ao processar vídeo: {str(e)}'}), 500
 
 @app.route('/api/download-and-extract-frames', methods=['POST', 'OPTIONS'])
 def download_and_extract_frames():

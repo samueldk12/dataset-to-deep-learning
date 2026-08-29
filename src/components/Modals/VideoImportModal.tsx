@@ -342,30 +342,65 @@ export const VideoImportModal: React.FC<VideoImportModalProps> = ({
   };
 
   const handleBatchExtract = async () => {
-    if (!videoRef.current) return;
     setIsExtracting(true);
     setErrorMsg(null);
     setExtractProgress(0);
 
-    try {
-      const frames = await extractFramesFromVideo(
-        videoRef.current,
-        {
-          mode: extractMode,
-          intervalSec,
-          fps: fpsVal,
-          totalFrames: totalFramesVal,
-          maxFramesLimit,
-        },
-        (percent, status) => {
-          setExtractProgress(percent);
-          setExtractStatus(status);
-        }
-      );
-      setStagedFrames((prev) => [...prev, ...frames]);
-      setIsExtracting(false);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Erro ao extrair frames do vídeo.');
+    const videoEl = videoRef.current;
+    const isDurationValid = videoEl && videoEl.duration && !isNaN(videoEl.duration) && videoEl.duration > 0;
+
+    // 1. Try browser client-side extraction for local uploaded files
+    if (isDurationValid && sourceType === 'upload') {
+      try {
+        const frames = await extractFramesFromVideo(
+          videoEl!,
+          {
+            mode: extractMode,
+            intervalSec,
+            fps: fpsVal,
+            totalFrames: totalFramesVal,
+            maxFramesLimit,
+          },
+          (percent, status) => {
+            setExtractProgress(percent);
+            setExtractStatus(status);
+          }
+        );
+        setStagedFrames((prev) => [...prev, ...frames]);
+        setIsExtracting(false);
+        return;
+      } catch (err: any) {
+        console.warn('Tentando fallback no backend Python...', err);
+      }
+    }
+
+    // 2. Extract via backend Python OpenCV & yt-dlp (handles URLs without CORS issues)
+    const targetUrl = videoUrlInput.trim() || activeVideoSrc;
+    if (targetUrl) {
+      try {
+        setExtractStatus('Extraindo frames via backend Python & yt-dlp...');
+        const frames = await extractFramesViaPythonBackend(
+          targetUrl,
+          {
+            mode: extractMode,
+            intervalSec,
+            fps: fpsVal,
+            totalFrames: totalFramesVal,
+            maxFramesLimit,
+          },
+          (percent, status) => {
+            setExtractProgress(percent);
+            setExtractStatus(status);
+          }
+        );
+        setStagedFrames((prev) => [...prev, ...frames]);
+        setIsExtracting(false);
+      } catch (err: any) {
+        setErrorMsg(err.message || 'Erro ao extrair frames do vídeo.');
+        setIsExtracting(false);
+      }
+    } else {
+      setErrorMsg('Duração do vídeo inválida ou vídeo não carregado. Tente carregar novamente.');
       setIsExtracting(false);
     }
   };

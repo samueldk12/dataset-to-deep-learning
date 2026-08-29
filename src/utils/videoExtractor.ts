@@ -83,7 +83,10 @@ export async function extractFramesFromVideo(
 ): Promise<ExtractedFrame[]> {
   return new Promise(async (resolve, reject) => {
     try {
-      const duration = videoElement.duration;
+      let duration = videoElement.duration;
+      if ((!duration || isNaN(duration) || duration <= 0) && videoElement.seekable && videoElement.seekable.length > 0) {
+        duration = videoElement.seekable.end(videoElement.seekable.length - 1);
+      }
       if (!duration || isNaN(duration) || duration <= 0) {
         return reject(new Error('Duração do vídeo inválida ou vídeo não carregado.'));
       }
