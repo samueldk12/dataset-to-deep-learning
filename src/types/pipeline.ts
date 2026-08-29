@@ -90,6 +90,8 @@ export interface AnnotationPipeline {
   name: string;
   description: string;
   domain: 'vision' | 'nlp' | 'audio' | 'multimodal';
+  projectId?: string;
+  projectName?: string;
   nodes: PipelineNode[];
   edges: PipelineEdge[];
   createdAt: number;

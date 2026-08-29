@@ -15,7 +15,13 @@ import {
   ArrowRight,
   RefreshCw,
   FolderKanban,
-  Save
+  Save,
+  ArrowLeft,
+  Search,
+  Database,
+  Edit3,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 import { 
   AnnotationPipeline, 
@@ -25,40 +31,63 @@ import {
   PortDataType,
   PipelineExecutionResult 
 } from '../../types/pipeline';
-import { DatasetProject, DatasetImage, Annotation } from '../../types/dataset';
+import { DatasetProject, DatasetImage, Annotation, DomainCategory, DatasetTaskType } from '../../types/dataset';
 import { PIPELINE_TEMPLATES, createDefaultNode } from '../../utils/pipelineTemplates';
 import { executePipeline } from '../../utils/pipelineEngine';
 import { NodeCard } from '../Pipeline/NodeCard';
 import { BezierEdge } from '../Pipeline/BezierEdge';
 import { NodePalette } from '../Pipeline/NodePalette';
+import { NewPipelineModal } from '../Modals/NewPipelineModal';
 
 interface PipelineStudioWorkspaceProps {
   project: DatasetProject;
+  projects?: DatasetProject[];
   onUpdateProject: (updated: DatasetProject) => void;
   onOpenExportModal?: () => void;
+  onOpenNewDatasetModal?: (domain?: DomainCategory, taskType?: DatasetTaskType) => void;
 }
 
 export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = ({
   project,
+  projects = [project],
   onUpdateProject,
   onOpenExportModal,
+  onOpenNewDatasetModal,
 }) => {
-  // Active pipeline state
-  const [pipeline, setPipeline] = useState<AnnotationPipeline>(() => {
-    const saved = localStorage.getItem(`annotatex_pipeline_${project.id}`);
-    if (saved) {
+  // Pipelines Storage
+  const [savedPipelines, setSavedPipelines] = useState<AnnotationPipeline[]>(() => {
+    const stored = localStorage.getItem('annotatex_pipelines_list');
+    if (stored) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch (e) {}
     }
-    return { ...PIPELINE_TEMPLATES[0], id: `pipe_${Date.now()}` };
+    // Default initial template pipelines bound to active project
+    return PIPELINE_TEMPLATES.map((t, idx) => ({
+      ...t,
+      id: `pipe_default_${idx + 1}`,
+      projectId: project.id,
+      projectName: project.name,
+    }));
   });
 
+  // View Mode: 'list' (Manager Hub) or 'editor' (Node Canvas)
+  const [viewMode, setViewMode] = useState<'list' | 'editor'>('list');
+  const [activePipelineId, setActivePipelineId] = useState<string>(
+    savedPipelines[0]?.id || 'pipe_default_1'
+  );
+
+  // Modal State
+  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [searchFilter, setSearchFilter] = useState('');
+
+  // Left Sidebar State
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 
   // Canvas Viewport Transformation
-  const [transform, setTransform] = useState({ scale: 1, offsetX: 60, offsetY: 40 });
+  const [transform, setTransform] = useState({ scale: 1, offsetX: 80, offsetY: 60 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
 
@@ -86,18 +115,36 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Save pipeline changes to storage
+  // Persist pipelines list
   useEffect(() => {
-    localStorage.setItem(`annotatex_pipeline_${project.id}`, JSON.stringify(pipeline));
-  }, [pipeline, project.id]);
+    localStorage.setItem('annotatex_pipelines_list', JSON.stringify(savedPipelines));
+  }, [savedPipelines]);
+
+  const activePipeline = savedPipelines.find((p) => p.id === activePipelineId) || savedPipelines[0];
+
+  const updateActivePipeline = (updater: (prev: AnnotationPipeline) => AnnotationPipeline) => {
+    setSavedPipelines((prevList) =>
+      prevList.map((pipe) => {
+        if (pipe.id === activePipelineId) {
+          const updated = updater(pipe);
+          return { ...updated, updatedAt: Date.now() };
+        }
+        return pipe;
+      })
+    );
+  };
+
+  // Find dataset bound to active pipeline
+  const targetProject = projects.find((p) => p.id === activePipeline?.projectId) || project;
 
   // Compute absolute port positions on canvas for drawing Bezier wires
   const getPortPosition = useCallback(
     (nodeId: string, portId: string, isOutput: boolean) => {
-      const node = pipeline.nodes.find((n) => n.id === nodeId);
+      if (!activePipeline) return { x: 0, y: 0 };
+      const node = activePipeline.nodes.find((n) => n.id === nodeId);
       if (!node) return { x: 0, y: 0 };
 
-      const cardWidth = 288; // w-72 = 18rem = 288px
+      const cardWidth = 288; // w-72 = 288px
       const headerHeight = 52;
       const portRowHeight = 22;
 
@@ -111,13 +158,12 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
 
       return { x: xPos, y: yPos };
     },
-    [pipeline.nodes]
+    [activePipeline]
   );
 
   /* --- CANVAS INTERACTIONS --- */
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     if (e.button === 1 || e.button === 0) {
-      // Pan canvas
       setIsPanning(true);
       setPanStart({ x: e.clientX - transform.offsetX, y: e.clientY - transform.offsetY });
       setSelectedNodeId(null);
@@ -138,7 +184,7 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
       const canvasX = (e.clientX - transform.offsetX) / transform.scale;
       const canvasY = (e.clientY - transform.offsetY) / transform.scale;
 
-      setPipeline((prev) => ({
+      updateActivePipeline((prev) => ({
         ...prev,
         nodes: prev.nodes.map((n) =>
           n.id === draggingNodeId
@@ -203,17 +249,16 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
     toPortType: PortDataType,
     isOutput: boolean
   ) => {
-    if (!connecting) return;
-    if (connecting.fromNodeId === toNodeId) return; // cannot connect node to itself
-    if (connecting.isOutput === isOutput) return; // must connect output to input
+    if (!connecting || !activePipeline) return;
+    if (connecting.fromNodeId === toNodeId) return;
+    if (connecting.isOutput === isOutput) return;
 
     const sourceNodeId = connecting.isOutput ? connecting.fromNodeId : toNodeId;
     const sourcePortId = connecting.isOutput ? connecting.fromPortId : toPortId;
     const targetNodeId = connecting.isOutput ? toNodeId : connecting.fromNodeId;
     const targetPortId = connecting.isOutput ? toPortId : connecting.fromPortId;
 
-    // Check if edge already exists
-    const exists = pipeline.edges.some(
+    const exists = activePipeline.edges.some(
       (e) =>
         e.fromNodeId === sourceNodeId &&
         e.fromPortId === sourcePortId &&
@@ -230,7 +275,7 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
         toPortId: targetPortId,
       };
 
-      setPipeline((prev) => ({
+      updateActivePipeline((prev) => ({
         ...prev,
         edges: [...prev.edges, newEdge],
       }));
@@ -240,7 +285,7 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
   };
 
   const handleDeleteEdge = (edgeId: string) => {
-    setPipeline((prev) => ({
+    updateActivePipeline((prev) => ({
       ...prev,
       edges: prev.edges.filter((e) => e.id !== edgeId),
     }));
@@ -249,19 +294,18 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
   /* --- NODE MANAGEMENT --- */
   const handleAddNode = (type: PipelineNodeType) => {
     const defaultPos = {
-      x: Math.round((400 - transform.offsetX) / transform.scale),
-      y: Math.round((200 - transform.offsetY) / transform.scale),
+      x: Math.round((350 - transform.offsetX) / transform.scale),
+      y: Math.round((180 - transform.offsetY) / transform.scale),
     };
     const newNode = createDefaultNode(type, defaultPos);
-    setPipeline((prev) => ({
+    updateActivePipeline((prev) => ({
       ...prev,
       nodes: [...prev.nodes, newNode],
     }));
-    setIsPaletteOpen(false);
   };
 
   const handleDeleteNode = (nodeId: string) => {
-    setPipeline((prev) => ({
+    updateActivePipeline((prev) => ({
       ...prev,
       nodes: prev.nodes.filter((n) => n.id !== nodeId),
       edges: prev.edges.filter((e) => e.fromNodeId !== nodeId && e.toNodeId !== nodeId),
@@ -270,96 +314,79 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
   };
 
   const handleDuplicateNode = (nodeId: string) => {
-    const original = pipeline.nodes.find((n) => n.id === nodeId);
+    if (!activePipeline) return;
+    const original = activePipeline.nodes.find((n) => n.id === nodeId);
     if (!original) return;
     const duplicated = createDefaultNode(original.type, {
       x: original.position.x + 30,
       y: original.position.y + 30,
     });
     duplicated.params = { ...original.params };
-    setPipeline((prev) => ({
+    updateActivePipeline((prev) => ({
       ...prev,
       nodes: [...prev.nodes, duplicated],
     }));
   };
 
   const handleUpdateNodeParams = (nodeId: string, newParams: Record<string, any>) => {
-    setPipeline((prev) => ({
+    updateActivePipeline((prev) => ({
       ...prev,
       nodes: prev.nodes.map((n) => (n.id === nodeId ? { ...n, params: newParams } : n)),
     }));
   };
 
-  /* --- TEMPLATE & IMPORT/EXPORT --- */
-  const handleLoadTemplate = (tpl: AnnotationPipeline) => {
-    setPipeline({
-      ...tpl,
-      id: `pipe_${Date.now()}`,
-      updatedAt: Date.now(),
+  /* --- PIPELINE CREATION & DELETION --- */
+  const handleCreateNewPipeline = (newPipe: AnnotationPipeline) => {
+    setSavedPipelines((prev) => [newPipe, ...prev]);
+    setActivePipelineId(newPipe.id);
+    setViewMode('editor');
+  };
+
+  const handleDeletePipeline = (pipeId: string) => {
+    setSavedPipelines((prev) => {
+      const remaining = prev.filter((p) => p.id !== pipeId);
+      if (remaining.length > 0 && activePipelineId === pipeId) {
+        setActivePipelineId(remaining[0].id);
+      }
+      return remaining;
     });
   };
 
-  const handleExportPipelineJSON = () => {
-    const jsonStr = JSON.stringify(pipeline, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `pipeline_${pipeline.name.toLowerCase().replace(/\s+/g, '_')}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImportPipelineJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const parsed = JSON.parse(ev.target?.result as string);
-        if (parsed.nodes && parsed.edges) {
-          setPipeline(parsed);
-        }
-      } catch (err) {
-        alert('Formato de pipeline JSON inválido.');
-      }
-    };
-    reader.readAsText(file);
-  };
-
   /* --- PIPELINE EXECUTION --- */
-  const handleRunPipeline = async (batchAll = false) => {
-    if (isExecuting) return;
+  const handleRunPipeline = async (batchAll = false, specificPipeline?: AnnotationPipeline) => {
+    const pipeToRun = specificPipeline || activePipeline;
+    if (!pipeToRun || isExecuting) return;
+
     setIsExecuting(true);
     setIsBatchRunning(batchAll);
     setExecProgress(0);
     setLastResult(null);
 
     // Reset node execution statuses
-    setPipeline((prev) => ({
+    updateActivePipeline((prev) => ({
       ...prev,
       nodes: prev.nodes.map((n) => ({ ...n, status: 'idle', errorMessage: undefined })),
     }));
 
-    const activeImage = project.images?.find((img) => img.id === project.activeImageId) || project.images?.[0] || null;
-    const targetImages = batchAll ? (project.images || []) : [activeImage].filter(Boolean) as DatasetImage[];
+    const activeImage = targetProject.images?.find((img) => img.id === targetProject.activeImageId) || targetProject.images?.[0] || null;
+    const targetImages = batchAll ? (targetProject.images || []) : [activeImage].filter(Boolean) as DatasetImage[];
 
     let aggregatedResult: PipelineExecutionResult | null = null;
-    let updatedImages = [...(project.images || [])];
+    let updatedImages = [...(targetProject.images || [])];
 
     for (let i = 0; i < targetImages.length; i++) {
       const currentImg = targetImages[i];
       const batchPercent = Math.round(((i + 1) / targetImages.length) * 100);
 
-      const result = await executePipeline(pipeline, {
-        project,
+      const result = await executePipeline(pipeToRun, {
+        project: targetProject,
         activeImage: currentImg,
         onProgress: (prog, step, activeNodeId) => {
           setExecProgress(batchAll ? batchPercent : prog);
           setCurrentStepName(`[${i + 1}/${targetImages.length}] ${step}`);
         },
         onNodeStateChange: (nodeId, status, output, err) => {
-          setPipeline((prev) => ({
+          updateActivePipeline((prev) => ({
             ...prev,
             nodes: prev.nodes.map((n) =>
               n.id === nodeId
@@ -396,14 +423,155 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
 
     if (aggregatedResult && aggregatedResult.success) {
       onUpdateProject({
-        ...project,
+        ...targetProject,
         images: updatedImages,
       });
     }
   };
 
-  const activeImage = project.images?.find((img) => img.id === project.activeImageId) || project.images?.[0] || null;
+  /* ========================================================= */
+  /* VIEW 1: PIPELINES MANAGER & LIST VIEW HUB               */
+  /* ========================================================= */
+  if (viewMode === 'list') {
+    const filteredList = savedPipelines.filter((p) =>
+      p.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
+      p.description.toLowerCase().includes(searchFilter.toLowerCase()) ||
+      (p.projectName && p.projectName.toLowerCase().includes(searchFilter.toLowerCase()))
+    );
 
+    return (
+      <div className="flex-1 flex flex-col h-full overflow-y-auto bg-[#070a0f] text-slate-100 p-6 md:p-10 select-none">
+        {/* Header & Quick Creation Bar */}
+        <div className="max-w-6xl mx-auto w-full flex flex-col gap-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-purple-600/20 text-purple-400 border border-purple-500/30">
+                <Workflow className="w-6 h-6" />
+              </div>
+              <div className="flex flex-col">
+                <h1 className="text-xl font-bold text-white tracking-tight">Pipelines de Anotação</h1>
+                <p className="text-xs text-slate-400">
+                  Automação e fluxos gráficos com IA, scripts Python/JS e ferramentas conectados aos seus datasets
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setIsNewModalOpen(true)}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs shadow-lg shadow-purple-600/20 transition-all active:scale-98"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Criar Novo Pipeline</span>
+            </button>
+          </div>
+
+          {/* Search & Filter Bar */}
+          <div className="flex items-center justify-between gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Buscar pipelines por nome ou dataset..."
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+              />
+            </div>
+            <span className="text-xs text-slate-400 font-mono">
+              {filteredList.length} {filteredList.length === 1 ? 'pipeline' : 'pipelines'}
+            </span>
+          </div>
+
+          {/* Pipelines Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredList.map((pipe) => {
+              const boundDataset = projects.find((p) => p.id === pipe.projectId) || project;
+
+              return (
+                <div
+                  key={pipe.id}
+                  className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 hover:border-purple-500/50 hover:bg-slate-900 transition-all shadow-xl flex flex-col justify-between gap-4 group"
+                >
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="p-2 rounded-xl bg-purple-600/10 text-purple-400 border border-purple-500/20">
+                          <Workflow className="w-4 h-4" />
+                        </div>
+                        <span className="font-bold text-sm text-white group-hover:text-purple-300 transition-colors">
+                          {pipe.name}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
+                      {pipe.description || 'Pipeline de automação de anotação de dados'}
+                    </p>
+
+                    {/* Dataset Bound Badge */}
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[11px] text-emerald-400 font-medium">
+                      <Database className="w-3.5 h-3.5" />
+                      <span className="truncate">Dataset: {boundDataset?.name || 'Dataset Ativo'}</span>
+                    </div>
+
+                    <div className="flex items-center gap-3 text-[10px] text-slate-500 font-mono mt-1">
+                      <span>{pipe.nodes.length} Nodos</span>
+                      <span>•</span>
+                      <span>{pipe.edges.length} Conexões</span>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => {
+                        setActivePipelineId(pipe.id);
+                        setViewMode('editor');
+                      }}
+                      className="flex-1 py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-purple-600 hover:text-white text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Editar no Canvas</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleRunPipeline(false, pipe)}
+                      title="Executar este pipeline agora"
+                      className="p-2 rounded-lg bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 transition-colors"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                    </button>
+
+                    <button
+                      onClick={() => handleDeletePipeline(pipe.id)}
+                      title="Excluir pipeline"
+                      className="p-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-950/30 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Modal: Create New Pipeline */}
+        <NewPipelineModal
+          isOpen={isNewModalOpen}
+          onClose={() => setIsNewModalOpen(false)}
+          projects={projects}
+          currentProjectId={project.id}
+          onOpenNewDatasetModal={onOpenNewDatasetModal}
+          onCreatePipeline={handleCreateNewPipeline}
+        />
+      </div>
+    );
+  }
+
+  /* ========================================================= */
+  /* VIEW 2: VISUAL NODE GRAPH CANVAS EDITOR                   */
+  /* ========================================================= */
   return (
     <div 
       ref={containerRef}
@@ -415,45 +583,70 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
     >
       {/* 1. TOP PIPELINE CONTROL BAR */}
       <div className="h-14 bg-slate-950/90 border-b border-slate-800 px-4 flex items-center justify-between z-30 shrink-0 backdrop-blur-md">
-        {/* Left: Pipeline Title & Template Loader */}
+        {/* Left: Back to List & Pipeline Title */}
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setViewMode('list')}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold transition-colors border border-slate-800"
+            title="Voltar para a lista de todos os pipelines"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Todos os Pipelines</span>
+          </button>
+
+          <div className="w-[1px] h-5 bg-slate-800" />
+
+          {/* Toggle Left Sidebar */}
+          <button
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className={`p-1.5 rounded-lg text-xs font-medium border transition-colors ${
+              isSidebarOpen
+                ? 'bg-blue-600/20 text-blue-300 border-blue-500/40'
+                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+            }`}
+            title="Mostrar / Ocultar Menu de Nodos à Esquerda"
+          >
+            {isSidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+          </button>
+
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-purple-600/20 text-purple-400 border border-purple-500/30">
               <Workflow className="w-4 h-4" />
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-xs text-white">{pipeline.name}</span>
+              <span className="font-bold text-xs text-white">{activePipeline.name}</span>
               <span className="text-[10px] text-slate-400">
-                {pipeline.nodes.length} Nodos • {pipeline.edges.length} Conexões
+                {activePipeline.nodes.length} Nodos • {activePipeline.edges.length} Conexões
               </span>
             </div>
           </div>
 
           <div className="w-[1px] h-5 bg-slate-800" />
 
-          {/* Template Select Dropdown */}
-          <select
-            onChange={(e) => {
-              const selectedTpl = PIPELINE_TEMPLATES.find((t) => t.id === e.target.value);
-              if (selectedTpl) handleLoadTemplate(selectedTpl);
-            }}
-            value=""
-            className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none cursor-pointer"
-          >
-            <option value="" disabled>📋 Carregar Template...</option>
-            {PIPELINE_TEMPLATES.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
-
-          {/* Add Node Button */}
-          <button
-            onClick={() => setIsPaletteOpen(!isPaletteOpen)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-semibold transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Adicionar Nó</span>
-          </button>
+          {/* Dataset Binding Switcher */}
+          <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs">
+            <Database className="w-3.5 h-3.5 text-emerald-400" />
+            <select
+              value={activePipeline.projectId || project.id}
+              onChange={(e) => {
+                const selected = projects.find((p) => p.id === e.target.value);
+                if (selected) {
+                  updateActivePipeline((prev) => ({
+                    ...prev,
+                    projectId: selected.id,
+                    projectName: selected.name,
+                  }));
+                }
+              }}
+              className="bg-transparent text-slate-200 text-xs focus:outline-none cursor-pointer"
+            >
+              {projects.map((p) => (
+                <option key={p.id} value={p.id} className="bg-slate-900 text-white">
+                  Dataset: {p.name} ({p.images?.length || 0})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Center: Execution Progress Indicator */}
@@ -472,61 +665,46 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
           </div>
         )}
 
-        {/* Right: Actions (Run, Export, Import) */}
+        {/* Right: Actions */}
         <div className="flex items-center gap-2">
-          {/* Run on Single Image */}
+          {/* Run Single Image */}
           <button
             onClick={() => handleRunPipeline(false)}
             disabled={isExecuting}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition-all shadow-lg shadow-purple-600/20 disabled:opacity-50"
-            title="Executar pipeline na imagem atualmente selecionada"
+            title="Executar pipeline na imagem ativa do dataset"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
             <span>Executar Pipeline</span>
           </button>
 
-          {/* Run Batch All Images */}
+          {/* Run Batch All */}
           <button
             onClick={() => handleRunPipeline(true)}
             disabled={isExecuting}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-200 border border-slate-700 hover:border-slate-600 text-xs font-medium transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-200 border border-slate-700 hover:border-slate-600 text-xs font-medium transition-colors disabled:opacity-50"
             title="Executar pipeline em lote sobre todas as imagens do dataset"
           >
             <Zap className="w-3.5 h-3.5 text-yellow-400" />
-            <span className="hidden md:inline">Em Lote ({project.images?.length || 0})</span>
+            <span className="hidden md:inline">Em Lote ({targetProject.images?.length || 0})</span>
           </button>
 
           <div className="w-[1px] h-5 bg-slate-800" />
 
-          {/* Import / Export JSON */}
+          {/* New Pipeline */}
           <button
-            onClick={handleExportPipelineJSON}
-            title="Salvar Pipeline em arquivo JSON"
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-colors"
+            onClick={() => setIsNewModalOpen(true)}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-medium transition-colors"
+            title="Criar outro pipeline"
           >
-            <Download className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5 text-purple-400" />
+            <span>Novo</span>
           </button>
-
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            title="Carregar Pipeline de arquivo JSON"
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-colors"
-          >
-            <Upload className="w-4 h-4" />
-          </button>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json"
-            onChange={handleImportPipelineJSON}
-            className="hidden"
-          />
 
           {/* Reset Zoom */}
           <button
-            onClick={() => setTransform({ scale: 1, offsetX: 60, offsetY: 40 })}
-            title="Centralizar Visualização (Zoom 100%)"
+            onClick={() => setTransform({ scale: 1, offsetX: 80, offsetY: 60 })}
+            title="Centralizar Visualização"
             className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-900 transition-colors font-mono text-xs"
           >
             {Math.round(transform.scale * 100)}%
@@ -534,109 +712,109 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
         </div>
       </div>
 
-      {/* 2. NODE LIBRARY PALETTE DRAWER */}
-      <NodePalette
-        isOpen={isPaletteOpen}
-        onClose={() => setIsPaletteOpen(false)}
-        onAddNode={handleAddNode}
-      />
+      {/* 2. MAIN WORKSPACE BODY (LEFT SIDEBAR + GRAPH CANVAS) */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* LEFT NODE PALETTE SIDEBAR */}
+        <NodePalette
+          isOpen={isSidebarOpen}
+          onAddNode={handleAddNode}
+        />
 
-      {/* 3. INFINITE GRAPH CANVAS WITH DOT GRID */}
-      <div 
-        className="flex-1 w-full h-full relative overflow-hidden cursor-grab active:cursor-grabbing"
-        style={{
-          backgroundImage: `radial-gradient(circle, #1e293b 1px, transparent 1px)`,
-          backgroundSize: `${20 * transform.scale}px ${20 * transform.scale}px`,
-          backgroundPosition: `${transform.offsetX}px ${transform.offsetY}px`,
-        }}
-      >
-        {/* SVG Bezier Wires Layer */}
-        <svg
-          className="absolute inset-0 w-full h-full pointer-events-none z-0"
+        {/* INFINITE GRAPH CANVAS */}
+        <div 
+          className="flex-1 w-full h-full relative overflow-hidden cursor-grab active:cursor-grabbing"
           style={{
-            transform: `translate(${transform.offsetX}px, ${transform.offsetY}px) scale(${transform.scale})`,
-            transformOrigin: '0 0',
+            backgroundImage: `radial-gradient(circle, #1e293b 1px, transparent 1px)`,
+            backgroundSize: `${20 * transform.scale}px ${20 * transform.scale}px`,
+            backgroundPosition: `${transform.offsetX}px ${transform.offsetY}px`,
           }}
         >
-          {pipeline.edges.map((edge) => {
-            const fromPos = getPortPosition(edge.fromNodeId, edge.fromPortId, true);
-            const toPos = getPortPosition(edge.toNodeId, edge.toPortId, false);
-            const fromNode = pipeline.nodes.find((n) => n.id === edge.fromNodeId);
-            const fromPort = fromNode?.outputs.find((p) => p.id === edge.fromPortId);
+          {/* SVG Bezier Wires */}
+          <svg
+            className="absolute inset-0 w-full h-full pointer-events-none z-0"
+            style={{
+              transform: `translate(${transform.offsetX}px, ${transform.offsetY}px) scale(${transform.scale})`,
+              transformOrigin: '0 0',
+            }}
+          >
+            {activePipeline.edges.map((edge) => {
+              const fromPos = getPortPosition(edge.fromNodeId, edge.fromPortId, true);
+              const toPos = getPortPosition(edge.toNodeId, edge.toPortId, false);
+              const fromNode = activePipeline.nodes.find((n) => n.id === edge.fromNodeId);
+              const fromPort = fromNode?.outputs.find((p) => p.id === edge.fromPortId);
 
-            return (
-              <g key={edge.id} className="pointer-events-auto">
-                <BezierEdge
-                  id={edge.id}
-                  fromX={fromPos.x}
-                  fromY={fromPos.y}
-                  toX={toPos.x}
-                  toY={toPos.y}
-                  fromPortType={fromPort?.type}
-                  isActive={fromNode?.status === 'running'}
-                  onDelete={handleDeleteEdge}
-                />
-              </g>
-            );
-          })}
+              return (
+                <g key={edge.id} className="pointer-events-auto">
+                  <BezierEdge
+                    id={edge.id}
+                    fromX={fromPos.x}
+                    fromY={fromPos.y}
+                    toX={toPos.x}
+                    toY={toPos.y}
+                    fromPortType={fromPort?.type}
+                    isActive={fromNode?.status === 'running'}
+                    onDelete={handleDeleteEdge}
+                  />
+                </g>
+              );
+            })}
 
-          {/* Active Wire being dragged */}
-          {connecting && (
-            <BezierEdge
-              id="wire_active"
-              fromX={connecting.isOutput ? connecting.startPos.x : connecting.currentPos.x}
-              fromY={connecting.isOutput ? connecting.startPos.y : connecting.currentPos.y}
-              toX={connecting.isOutput ? connecting.currentPos.x : connecting.startPos.x}
-              toY={connecting.isOutput ? connecting.currentPos.y : connecting.startPos.y}
-              fromPortType={connecting.fromPortType}
-              isActive={true}
-            />
-          )}
-        </svg>
-
-        {/* Interactive Node Cards Layer */}
-        <div
-          className="absolute inset-0 w-full h-full pointer-events-none"
-          style={{
-            transform: `translate(${transform.offsetX}px, ${transform.offsetY}px) scale(${transform.scale})`,
-            transformOrigin: '0 0',
-          }}
-        >
-          {pipeline.nodes.map((node) => (
-            <div
-              key={node.id}
-              className="pointer-events-auto"
-              onMouseDown={(e) => {
-                // Check if dragging node header
-                const target = e.target as HTMLElement;
-                if (target.closest('.cursor-move')) {
-                  e.stopPropagation();
-                  setDraggingNodeId(node.id);
-                  const canvasX = (e.clientX - transform.offsetX) / transform.scale;
-                  const canvasY = (e.clientY - transform.offsetY) / transform.scale;
-                  setDragOffset({
-                    x: canvasX - node.position.x,
-                    y: canvasY - node.position.y,
-                  });
-                }
-              }}
-            >
-              <NodeCard
-                node={node}
-                isSelected={selectedNodeId === node.id}
-                onSelect={(id) => setSelectedNodeId(id)}
-                onUpdateParams={handleUpdateNodeParams}
-                onDelete={handleDeleteNode}
-                onDuplicate={handleDuplicateNode}
-                onStartConnect={handleStartConnect}
-                onEndConnect={handleEndConnect}
+            {connecting && (
+              <BezierEdge
+                id="wire_active"
+                fromX={connecting.isOutput ? connecting.startPos.x : connecting.currentPos.x}
+                fromY={connecting.isOutput ? connecting.startPos.y : connecting.currentPos.y}
+                toX={connecting.isOutput ? connecting.currentPos.x : connecting.startPos.x}
+                toY={connecting.isOutput ? connecting.currentPos.y : connecting.startPos.y}
+                fromPortType={connecting.fromPortType}
+                isActive={true}
               />
-            </div>
-          ))}
+            )}
+          </svg>
+
+          {/* Node Cards */}
+          <div
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            style={{
+              transform: `translate(${transform.offsetX}px, ${transform.offsetY}px) scale(${transform.scale})`,
+              transformOrigin: '0 0',
+            }}
+          >
+            {activePipeline.nodes.map((node) => (
+              <div
+                key={node.id}
+                className="pointer-events-auto"
+                onMouseDown={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (target.closest('.cursor-move')) {
+                    e.stopPropagation();
+                    setDraggingNodeId(node.id);
+                    const canvasX = (e.clientX - transform.offsetX) / transform.scale;
+                    const canvasY = (e.clientY - transform.offsetY) / transform.scale;
+                    setDragOffset({
+                      x: canvasX - node.position.x,
+                      y: canvasY - node.position.y,
+                    });
+                  }
+                }}
+              >
+                <NodeCard
+                  node={node}
+                  isSelected={selectedNodeId === node.id}
+                  onSelect={(id) => setSelectedNodeId(id)}
+                  onUpdateParams={handleUpdateNodeParams}
+                  onDelete={handleDeleteNode}
+                  onDuplicate={handleDuplicateNode}
+                  onStartConnect={handleStartConnect}
+                  onEndConnect={handleEndConnect}
+                />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* 4. BOTTOM EXECUTION SUMMARY / TOAST */}
+      {/* 3. EXECUTION SUMMARY TOAST */}
       {lastResult && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40 bg-slate-900 border border-slate-700 px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-4 animate-fade-in text-xs">
           <div className="flex items-center gap-2">
@@ -647,10 +825,10 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
             )}
             <div className="flex flex-col">
               <span className="font-bold text-white">
-                {lastResult.success ? 'Pipeline Concluído com Sucesso!' : 'Falha na Execução'}
+                {lastResult.success ? 'Pipeline Executado com Sucesso!' : 'Falha na Execução'}
               </span>
               <span className="text-[10px] text-slate-400">
-                Tempo total: {lastResult.totalTimeMs}ms • {lastResult.finalAnnotations?.length || 0} anotações geradas
+                Tempo total: {lastResult.totalTimeMs}ms • {lastResult.finalAnnotations?.length || 0} anotações geradas no dataset '{targetProject.name}'
               </span>
             </div>
           </div>
@@ -663,6 +841,16 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
           </button>
         </div>
       )}
+
+      {/* Modal: Create New Pipeline */}
+      <NewPipelineModal
+        isOpen={isNewModalOpen}
+        onClose={() => setIsNewModalOpen(false)}
+        projects={projects}
+        currentProjectId={project.id}
+        onOpenNewDatasetModal={onOpenNewDatasetModal}
+        onCreatePipeline={handleCreateNewPipeline}
+      />
     </div>
   );
 };

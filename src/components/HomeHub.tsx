@@ -96,7 +96,7 @@ export const HomeHub: React.FC<HomeHubProps> = ({
                 className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-purple-300 border border-purple-500/40 hover:border-purple-400 font-semibold text-xs shadow-md transition-all active:scale-98"
               >
                 <Workflow className="w-3.5 h-3.5 text-purple-400" />
-                <span>Pipelines / Nodes</span>
+                <span>Pipelines</span>
               </button>
             )}
 

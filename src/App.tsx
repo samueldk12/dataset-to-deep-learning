@@ -800,8 +800,14 @@ export const App: React.FC = () => {
         {currentView === 'pipelines' && (
           <PipelineStudioWorkspace
             project={currentProject}
+            projects={projects}
             onUpdateProject={(updated) => updateProject(updated)}
             onOpenExportModal={() => setIsExportOpen(true)}
+            onOpenNewDatasetModal={(domain, taskType) => {
+              setNewDatasetModalDomain(domain || 'vision');
+              setNewDatasetModalTask(taskType);
+              setIsNewDatasetModalOpen(true);
+            }}
           />
         )}
 

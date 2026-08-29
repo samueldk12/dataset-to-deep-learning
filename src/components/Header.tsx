@@ -377,7 +377,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          {/* PIPELINES STUDIO */}
+          {/* PIPELINES */}
           <button
             onClick={() => {
               setHoveredDomain(null);
@@ -390,7 +390,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Workflow className="w-3.5 h-3.5 text-purple-400" />
-            <span>Pipelines / Nodes</span>
+            <span>Pipelines</span>
           </button>
 
           {/* DOCUMENTAÇÃO / DOCS */}
@@ -411,8 +411,8 @@ export const Header: React.FC<HeaderProps> = ({
         </nav>
       </div>
 
-      {/* 2. Center: Active Project Title */}
-      {currentProject && currentView !== 'home' && (
+      {/* 2. Center: Active Project Title (Only when inside an active dataset workspace) */}
+      {currentProject && (currentView === 'vision' || currentView === 'nlp' || currentView === 'audio') && (
         <div className="hidden lg:flex items-center gap-2">
           {isEditingTitle ? (
             <div className="flex items-center gap-1">
@@ -455,57 +455,18 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       )}
 
-      {/* 3. Right: Clean action */}
+      {/* 3. Right: Clean Settings Link */}
       <div className="flex items-center gap-2">
-        {/* Dataset-specific actions: only show when inside an active dataset workspace */}
-        {currentView !== 'home' && currentView !== 'docs' && (
-          <>
-            {onOpenAugmentationModal && (
-              <button
-                onClick={onOpenAugmentationModal}
-                title="Estúdio de Data Augmentation (Geometria, Cores, Ruído, Cutout)"
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs font-medium transition-colors"
-              >
-                <Wand2 className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Augmentation</span>
-              </button>
-            )}
-
-            {onOpenAIModal && (
-              <button
-                onClick={onOpenAIModal}
-                title="Modelos IA Pré-Treinados & Auto-Anotação (YOLOv11, Seg, Pose)"
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 text-xs font-medium transition-colors"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Auto IA</span>
-              </button>
-            )}
-          </>
-        )}
-
         {(onOpenAISettings || onOpenGeminiSettings) && (
           <button
             onClick={() => (onOpenAISettings ? onOpenAISettings() : onOpenGeminiSettings?.())}
             title="Configurações de IA, Chaves de API e Servidor MCP"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-900 transition-colors"
+            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-200 text-xs font-medium px-2.5 py-1.5 rounded-lg hover:bg-slate-850 transition-colors"
           >
             <Settings className="w-3.5 h-3.5" />
             <span>Configuração</span>
           </button>
         )}
-
-        <button
-          onClick={() => {
-            const dom = currentView === 'nlp' ? 'nlp' : currentView === 'audio' ? 'audio' : 'vision';
-            const task = dom === 'nlp' ? 'extractive_qa' : dom === 'audio' ? 'speech_recognition_asr' : 'object_detection';
-            onOpenNewDatasetModal(dom, task);
-          }}
-          className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Novo Dataset</span>
-        </button>
       </div>
     </header>
   );

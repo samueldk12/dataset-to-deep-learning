@@ -10,13 +10,14 @@ import {
   Search, 
   X,
   Layers,
-  ChevronRight
+  ChevronRight,
+  Code
 } from 'lucide-react';
 import { PipelineNodeType, NodeCategory } from '../../types/pipeline';
 
 interface NodePaletteProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose?: () => void;
   onAddNode: (type: PipelineNodeType) => void;
 }
 
@@ -182,28 +183,30 @@ export const NodePalette: React.FC<NodePaletteProps> = ({
   });
 
   return (
-    <div className="absolute top-14 left-4 z-40 w-80 bg-slate-900/95 border border-slate-700/80 rounded-2xl shadow-2xl backdrop-blur-md flex flex-col max-h-[calc(100vh-120px)] overflow-hidden animate-fade-in select-none">
+    <div className="w-72 bg-slate-950/95 border-r border-slate-800 flex flex-col h-full shrink-0 select-none z-20">
       {/* Header */}
-      <div className="p-3.5 border-b border-slate-800 flex items-center justify-between">
+      <div className="p-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30">
             <Plus className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="font-bold text-xs text-white">Biblioteca de Nodos</h3>
-            <p className="text-[10px] text-slate-400">Clique para inserir no pipeline</p>
+            <h3 className="font-bold text-xs text-white">Menu de Nodos</h3>
+            <p className="text-[10px] text-slate-400">Clique para adicionar ao fluxo</p>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Search & Category Filter */}
-      <div className="p-3 border-b border-slate-800 flex flex-col gap-2 bg-slate-950/40">
+      <div className="p-3 border-b border-slate-800 flex flex-col gap-2 bg-slate-900/20">
         <div className="relative">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
           <input
@@ -232,7 +235,7 @@ export const NodePalette: React.FC<NodePaletteProps> = ({
               className={`px-2 py-0.5 rounded-md font-medium whitespace-nowrap transition-colors ${
                 selectedCategory === cat.id
                   ? 'bg-blue-600 text-white'
-                  : 'bg-slate-950 text-slate-400 hover:text-slate-200'
+                  : 'bg-slate-900 text-slate-400 hover:text-slate-200'
               }`}
             >
               {cat.label}
@@ -246,17 +249,15 @@ export const NodePalette: React.FC<NodePaletteProps> = ({
         {filtered.map((item) => (
           <div
             key={item.type}
-            onClick={() => {
-              onAddNode(item.type);
-            }}
-            className="p-2.5 rounded-xl bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800/80 hover:border-slate-700 cursor-pointer transition-all flex items-center justify-between group"
+            onClick={() => onAddNode(item.type)}
+            className="p-2.5 rounded-xl bg-slate-900/60 hover:bg-slate-850 border border-slate-800/80 hover:border-slate-700 cursor-pointer transition-all flex items-center justify-between group"
           >
             <div className="flex flex-col gap-0.5 flex-1 pr-2">
               <div className="flex items-center gap-1.5">
                 <span className="font-bold text-xs text-slate-100 group-hover:text-blue-300 transition-colors">
                   {item.title}
                 </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-900 border border-slate-800 text-slate-400">
+                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-950 border border-slate-800 text-slate-400">
                   {item.badge}
                 </span>
               </div>
@@ -264,7 +265,7 @@ export const NodePalette: React.FC<NodePaletteProps> = ({
                 {item.desc}
               </p>
             </div>
-            <div className="p-1 rounded-lg bg-slate-900 group-hover:bg-blue-600 text-slate-400 group-hover:text-white transition-colors shrink-0">
+            <div className="p-1 rounded-lg bg-slate-800 group-hover:bg-blue-600 text-slate-400 group-hover:text-white transition-colors shrink-0">
               <Plus className="w-3.5 h-3.5" />
             </div>
           </div>

@@ -72,4 +72,28 @@ describe('AnnotateX Studio (Integration Tests)', () => {
     fireEvent.click(closeBtn);
     expect(screen.queryByText(/Exportar Dataset:/i)).not.toBeInTheDocument();
   });
+
+  it('navigates to Pipelines hub, opens creation modal with dataset selector, and loads node editor', () => {
+    render(<App />);
+
+    // 1. Click Pipelines in header
+    const pipelineBtns = screen.getAllByRole('button', { name: /Pipelines/i });
+    fireEvent.click(pipelineBtns[0]);
+
+    expect(screen.getByText(/Pipelines de Anotação/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Criar Novo Pipeline/i })).toBeInTheDocument();
+
+    // 2. Open New Pipeline Modal
+    fireEvent.click(screen.getByRole('button', { name: /Criar Novo Pipeline/i }));
+    expect(screen.getByText(/Dataset Vinculado/i)).toBeInTheDocument();
+    expect(screen.getByText(/Escolha o Template Inicial/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Ensemble Multi-Modelo/i).length).toBeGreaterThan(0);
+
+    // 3. Create pipeline
+    fireEvent.click(screen.getByRole('button', { name: /Criar e Abrir no Editor/i }));
+
+    // 4. Verify landed in Editor with Left Node Menu & Canvas
+    expect(screen.getByText(/Menu de Nodos/i)).toBeInTheDocument();
+    expect(screen.getByText(/Todos os Pipelines/i)).toBeInTheDocument();
+  });
 });
