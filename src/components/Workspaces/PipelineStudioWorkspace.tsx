@@ -356,8 +356,24 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
     });
   };
 
+  // Compute dataset items count & label for active project
+  const isNLP = targetProject.domain === 'nlp';
+  const isAudio = targetProject.domain === 'audio';
+
+  const datasetItemsCount = isNLP
+    ? (targetProject.textItems?.length || targetProject.llmItems?.length || targetProject.qaItems?.length || 0)
+    : isAudio
+    ? (targetProject.audioItems?.length || 0)
+    : (targetProject.images?.length || 0);
+
+  const datasetItemLabel = isNLP
+    ? (datasetItemsCount === 1 ? 'texto' : 'textos')
+    : isAudio
+    ? (datasetItemsCount === 1 ? 'áudio' : 'áudios')
+    : (datasetItemsCount === 1 ? 'imagem' : 'imagens');
+
   /* --- PIPELINE EXECUTION --- */
-  const handleRunPipeline = async (batchAll = false, specificPipeline?: AnnotationPipeline) => {
+  const handleRunPipeline = async (batchAll = true, specificPipeline?: AnnotationPipeline) => {
     const pipeToRun = specificPipeline || activePipeline;
     if (!pipeToRun || isExecuting) return;
 
@@ -372,53 +388,140 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
       nodes: prev.nodes.map((n) => ({ ...n, status: 'idle', errorMessage: undefined })),
     }));
 
-    const activeImage = targetProject.images?.find((img) => img.id === targetProject.activeImageId) || targetProject.images?.[0] || null;
-    const targetImages = batchAll ? (targetProject.images || []) : [activeImage].filter(Boolean) as DatasetImage[];
-
+    let totalItems = 0;
+    let updatedProject = { ...targetProject };
     let aggregatedResult: PipelineExecutionResult | null = null;
-    let updatedImages = [...(targetProject.images || [])];
 
-    for (let i = 0; i < targetImages.length; i++) {
-      const currentImg = targetImages[i];
-      const batchPercent = Math.round(((i + 1) / targetImages.length) * 100);
+    if (isNLP) {
+      const textList = (targetProject.textItems && targetProject.textItems.length > 0)
+        ? targetProject.textItems
+        : (targetProject.llmItems && targetProject.llmItems.length > 0)
+        ? targetProject.llmItems
+        : targetProject.qaItems || [];
 
-      const result = await executePipeline(pipeToRun, {
-        project: targetProject,
-        activeImage: currentImg,
-        onProgress: (prog, step, activeNodeId) => {
-          setExecProgress(batchAll ? batchPercent : prog);
-          setCurrentStepName(`[${i + 1}/${targetImages.length}] ${step}`);
-        },
-        onNodeStateChange: (nodeId, status, output, err) => {
-          updateActivePipeline((prev) => ({
-            ...prev,
-            nodes: prev.nodes.map((n) =>
-              n.id === nodeId
-                ? {
-                    ...n,
-                    status,
-                    lastOutput: output || n.lastOutput,
-                    errorMessage: err,
-                  }
-                : n
-            ),
-          }));
-        },
-      });
+      const targetList = batchAll ? textList : textList.slice(0, 1);
+      totalItems = targetList.length;
 
-      aggregatedResult = result;
+      let updatedTextItems = [...textList];
 
-      if (result.success && result.finalAnnotations && result.finalAnnotations.length > 0) {
-        updatedImages = updatedImages.map((img) =>
-          img.id === currentImg.id
-            ? {
-                ...img,
-                annotations: [...img.annotations, ...result.finalAnnotations!],
-                status: 'completed' as const,
-              }
-            : img
-        );
+      for (let i = 0; i < targetList.length; i++) {
+        const currItem = targetList[i];
+        const progressPercent = Math.round(((i + 1) / Math.max(1, targetList.length)) * 100);
+
+        const result = await executePipeline(pipeToRun, {
+          project: targetProject,
+          activeTextItem: currItem,
+          onProgress: (prog, step) => {
+            setExecProgress(batchAll ? progressPercent : prog);
+            setCurrentStepName(`[${i + 1}/${targetList.length}] ${step}`);
+          },
+          onNodeStateChange: (nodeId, status, output, err) => {
+            updateActivePipeline((prev) => ({
+              ...prev,
+              nodes: prev.nodes.map((n) =>
+                n.id === nodeId ? { ...n, status, lastOutput: output || n.lastOutput, errorMessage: err } : n
+              ),
+            }));
+          },
+        });
+
+        aggregatedResult = result;
+
+        if (result.success) {
+          updatedTextItems = updatedTextItems.map((item) =>
+            item.id === currItem.id ? { ...item, status: 'completed' as const } : item
+          );
+        }
       }
+
+      if (targetProject.textItems && targetProject.textItems.length > 0) {
+        updatedProject.textItems = updatedTextItems as any;
+      } else if (targetProject.llmItems && targetProject.llmItems.length > 0) {
+        updatedProject.llmItems = updatedTextItems as any;
+      }
+    } else if (isAudio) {
+      const audioList = targetProject.audioItems || [];
+      const targetList = batchAll ? audioList : audioList.slice(0, 1);
+      totalItems = targetList.length;
+
+      let updatedAudios = [...audioList];
+
+      for (let i = 0; i < targetList.length; i++) {
+        const currAudio = targetList[i];
+        const progressPercent = Math.round(((i + 1) / Math.max(1, targetList.length)) * 100);
+
+        const result = await executePipeline(pipeToRun, {
+          project: targetProject,
+          activeAudioItem: currAudio,
+          onProgress: (prog, step) => {
+            setExecProgress(batchAll ? progressPercent : prog);
+            setCurrentStepName(`[${i + 1}/${targetList.length}] ${step}`);
+          },
+          onNodeStateChange: (nodeId, status, output, err) => {
+            updateActivePipeline((prev) => ({
+              ...prev,
+              nodes: prev.nodes.map((n) =>
+                n.id === nodeId ? { ...n, status, lastOutput: output || n.lastOutput, errorMessage: err } : n
+              ),
+            }));
+          },
+        });
+
+        aggregatedResult = result;
+
+        if (result.success) {
+          updatedAudios = updatedAudios.map((audio) =>
+            audio.id === currAudio.id ? { ...audio, status: 'completed' as const } : audio
+          );
+        }
+      }
+
+      updatedProject.audioItems = updatedAudios;
+    } else {
+      // Vision / Multimodal Images
+      const imgList = targetProject.images || [];
+      const activeImage = imgList.find((img) => img.id === targetProject.activeImageId) || imgList[0] || null;
+      const targetImages = batchAll ? imgList : [activeImage].filter(Boolean) as DatasetImage[];
+      totalItems = targetImages.length;
+
+      let updatedImages = [...imgList];
+
+      for (let i = 0; i < targetImages.length; i++) {
+        const currentImg = targetImages[i];
+        const progressPercent = Math.round(((i + 1) / Math.max(1, targetImages.length)) * 100);
+
+        const result = await executePipeline(pipeToRun, {
+          project: targetProject,
+          activeImage: currentImg,
+          onProgress: (prog, step) => {
+            setExecProgress(batchAll ? progressPercent : prog);
+            setCurrentStepName(`[${i + 1}/${targetImages.length}] ${step}`);
+          },
+          onNodeStateChange: (nodeId, status, output, err) => {
+            updateActivePipeline((prev) => ({
+              ...prev,
+              nodes: prev.nodes.map((n) =>
+                n.id === nodeId ? { ...n, status, lastOutput: output || n.lastOutput, errorMessage: err } : n
+              ),
+            }));
+          },
+        });
+
+        aggregatedResult = result;
+
+        if (result.success && result.finalAnnotations && result.finalAnnotations.length > 0) {
+          updatedImages = updatedImages.map((img) =>
+            img.id === currentImg.id
+              ? {
+                  ...img,
+                  annotations: [...img.annotations, ...result.finalAnnotations!],
+                  status: 'completed' as const,
+                }
+              : img
+          );
+        }
+      }
+      updatedProject.images = updatedImages;
     }
 
     setIsExecuting(false);
@@ -426,10 +529,7 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
     setLastResult(aggregatedResult);
 
     if (aggregatedResult && aggregatedResult.success) {
-      onUpdateProject({
-        ...targetProject,
-        images: updatedImages,
-      });
+      onUpdateProject(updatedProject);
     }
   };
 
@@ -681,11 +781,21 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
               }}
               className="bg-transparent text-slate-200 text-xs focus:outline-none cursor-pointer truncate max-w-[180px]"
             >
-              {projects.map((p) => (
-                <option key={p.id} value={p.id} className="bg-slate-900 text-white">
-                  Dataset: {p.name} ({p.images?.length || 0})
-                </option>
-              ))}
+              {projects.map((p) => {
+                const isP_NLP = p.domain === 'nlp';
+                const isP_Audio = p.domain === 'audio';
+                const pCount = isP_NLP
+                  ? (p.textItems?.length || p.llmItems?.length || p.qaItems?.length || 0)
+                  : isP_Audio
+                  ? (p.audioItems?.length || 0)
+                  : (p.images?.length || 0);
+                const pLabel = isP_NLP ? 'textos' : isP_Audio ? 'áudios' : 'imagens';
+                return (
+                  <option key={p.id} value={p.id} className="bg-slate-900 text-white">
+                    Dataset: {p.name} ({pCount} {pLabel})
+                  </option>
+                );
+              })}
             </select>
           </div>
         </div>
@@ -708,26 +818,26 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
-          {/* Run Single Image */}
-          <button
-            onClick={() => handleRunPipeline(false)}
-            disabled={isExecuting}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-md shadow-purple-600/25 whitespace-nowrap transition-all active:scale-98 disabled:opacity-50 shrink-0"
-            title="Executar pipeline na imagem ativa do dataset"
-          >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            <span>Executar Pipeline</span>
-          </button>
-
-          {/* Run Batch All */}
+          {/* Run All Items (Default) */}
           <button
             onClick={() => handleRunPipeline(true)}
-            disabled={isExecuting}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-200 border border-slate-800 hover:border-slate-700 text-xs font-medium whitespace-nowrap transition-colors disabled:opacity-50 shrink-0"
-            title="Executar pipeline em lote sobre todas as imagens do dataset"
+            disabled={isExecuting || datasetItemsCount === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-md shadow-purple-600/25 whitespace-nowrap transition-all active:scale-98 disabled:opacity-50 shrink-0"
+            title={`Executar este pipeline em todo o dataset (${datasetItemsCount} ${datasetItemLabel})`}
+          >
+            <Play className="w-3.5 h-3.5 fill-current" />
+            <span>Executar Pipeline ({datasetItemsCount} {datasetItemLabel})</span>
+          </button>
+
+          {/* Run Single Item */}
+          <button
+            onClick={() => handleRunPipeline(false)}
+            disabled={isExecuting || datasetItemsCount === 0}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-200 border border-slate-800 hover:border-slate-700 text-xs font-medium whitespace-nowrap transition-colors disabled:opacity-50 shrink-0"
+            title="Executar pipeline apenas no 1º item / item ativo para teste rápido"
           >
             <Zap className="w-3.5 h-3.5 text-yellow-400" />
-            <span>Em Lote ({targetProject.images?.length || 0})</span>
+            <span>1 Item</span>
           </button>
 
           <div className="w-[1px] h-4 bg-slate-800 shrink-0" />

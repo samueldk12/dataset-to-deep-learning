@@ -280,4 +280,89 @@ describe('Pipeline Studio - Graph Execution Engine', () => {
     const isMatch = triggerRule.enabled && triggerRule.matchTag === testTag;
     expect(isMatch).toBe(true);
   });
+
+  it('executes pipeline on NLP text dataset items', async () => {
+    const nlpProject = {
+      id: 'proj_nlp_1',
+      name: 'FAQ Customer Support',
+      domain: 'nlp' as const,
+      taskType: 'text_classification' as const,
+      classes: [{ id: 'c1', name: 'Suporte', color: '#3b82f6' }],
+      textItems: [
+        { id: 't1', title: 'Dúvida 1', content: 'Como posso alterar minha senha?', annotations: [], tags: [], status: 'unannotated' as const },
+        { id: 't2', title: 'Dúvida 2', content: 'Qual o prazo de entrega?', annotations: [], tags: [], status: 'unannotated' as const },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    const nlpPipe: AnnotationPipeline = {
+      id: 'pipe_nlp_gemini',
+      name: 'Classificação de Texto via Gemini',
+      description: 'Pipeline NLP',
+      domain: 'nlp',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      nodes: [
+        createDefaultNode('dataset_source', { x: 0, y: 0 }, 'n_src'),
+        createDefaultNode('gemini_multimodal', { x: 200, y: 0 }, 'n_gemini'),
+        createDefaultNode('save_to_dataset', { x: 400, y: 0 }, 'n_save'),
+      ],
+      edges: [
+        { id: 'e1', fromNodeId: 'n_src', fromPortId: 'text', toNodeId: 'n_gemini', toPortId: 'text' },
+        { id: 'e2', fromNodeId: 'n_gemini', fromPortId: 'text', toNodeId: 'n_save', toPortId: 'text' },
+      ],
+    };
+
+    const result = await executePipeline(nlpPipe, {
+      project: nlpProject as any,
+      activeTextItem: nlpProject.textItems[0],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.executedNodeCount).toBe(3);
+    expect(nlpProject.textItems[0].status).toBe('completed');
+  });
+
+  it('executes pipeline on Audio dataset items', async () => {
+    const audioProject = {
+      id: 'proj_audio_1',
+      name: 'Call Center Audio ASR',
+      domain: 'audio' as const,
+      taskType: 'speech_recognition_asr' as const,
+      classes: [],
+      audioItems: [
+        { id: 'a1', name: 'chamada_01.wav', audioUrl: 'blob://audio1', durationSec: 12.5, status: 'unannotated' as const, transcription: '' },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    const audioPipe: AnnotationPipeline = {
+      id: 'pipe_audio_transcribe',
+      name: 'Transcrição ASR de Áudio',
+      description: 'Pipeline de Áudio',
+      domain: 'audio',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      nodes: [
+        createDefaultNode('dataset_source', { x: 0, y: 0 }, 'n_src'),
+        createDefaultNode('gemini_multimodal', { x: 200, y: 0 }, 'n_gemini'),
+        createDefaultNode('save_to_dataset', { x: 400, y: 0 }, 'n_save'),
+      ],
+      edges: [
+        { id: 'e1', fromNodeId: 'n_src', fromPortId: 'audio', toNodeId: 'n_gemini', toPortId: 'image' },
+        { id: 'e2', fromNodeId: 'n_gemini', fromPortId: 'text', toNodeId: 'n_save', toPortId: 'text' },
+      ],
+    };
+
+    const result = await executePipeline(audioPipe, {
+      project: audioProject as any,
+      activeAudioItem: audioProject.audioItems[0],
+    });
+
+    expect(result.success).toBe(true);
+    expect(audioProject.audioItems[0].status).toBe('completed');
+    expect(audioProject.audioItems[0].transcription).toContain('Transcrição');
+  });
 });

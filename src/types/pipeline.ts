@@ -101,7 +101,11 @@ export interface AnnotationPipeline {
 export interface PipelineExecutionContext {
   project: DatasetProject;
   activeImage?: DatasetImage | null;
+  activeTextItem?: any;
+  activeAudioItem?: any;
   allImages?: DatasetImage[];
+  allTextItems?: any[];
+  allAudioItems?: any[];
   onProgress?: (progress: number, currentStepName: string, activeNodeId: string) => void;
   onNodeStateChange?: (nodeId: string, status: NodeExecutionStatus, output?: any, error?: string) => void;
 }
