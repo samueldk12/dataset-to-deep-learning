@@ -11,6 +11,12 @@ from flask import Flask, request, jsonify, Response, send_file, send_from_direct
 from flask_cors import CORS
 import yt_dlp
 
+try:
+    import imageio_ffmpeg
+    FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
+except Exception:
+    FFMPEG_EXE = None
+
 DIST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'dist'))
 
 app = Flask(__name__, static_folder=DIST_DIR, static_url_path='')
@@ -327,12 +333,14 @@ def extract_youtube():
         return jsonify({'error': 'URL de vídeo é obrigatória'}), 400
 
     ydl_opts = {
-        'format': 'bestvideo*+bestaudio/best',
+        'format': 'best[ext=mp4]/bestvideo[ext=mp4]/best/bestvideo',
         'quiet': True,
         'no_warnings': True,
         'extract_flat': False,
         'noplaylist': True,
     }
+    if FFMPEG_EXE:
+        ydl_opts['ffmpeg_location'] = FFMPEG_EXE
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -374,17 +382,36 @@ def download_and_extract_frames():
 
     temp_video_path = os.path.join(TEMP_DIR, f'temp_video_{os.getpid()}_{int(cv2.getTickCount())}.mp4')
 
+    # Configure yt-dlp format to avoid multi-format merging requirements and prioritize fast 720p/480p downloads
     ydl_opts = {
-        'format': 'bestvideo*+bestaudio/best',
+        'format': 'best[height<=720][ext=mp4]/best[height<=480][ext=mp4]/best[ext=mp4]/best[height<=720]/best/worst',
+        'format_sort': ['res:720', 'ext:mp4:m4a'],
         'outtmpl': temp_video_path,
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
     }
+    if FFMPEG_EXE:
+        ydl_opts['ffmpeg_location'] = FFMPEG_EXE
+        ydl_opts['format'] = 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]/best'
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+        except Exception as dl_err:
+            # Fallback to direct single MP4 stream download without merging
+            fallback_opts = {
+                'format': 'best[height<=480][ext=mp4]/best[ext=mp4]/best/worst',
+                'outtmpl': temp_video_path,
+                'quiet': True,
+                'no_warnings': True,
+                'noplaylist': True,
+            }
+            if FFMPEG_EXE:
+                fallback_opts['ffmpeg_location'] = FFMPEG_EXE
+            with yt_dlp.YoutubeDL(fallback_opts) as ydl_fb:
+                ydl_fb.download([url])
 
         if not os.path.exists(temp_video_path):
             return jsonify({'error': 'Falha ao descarregar vídeo temporário'}), 500
@@ -429,7 +456,10 @@ def download_and_extract_frames():
 
         # Clean up temp file
         if os.path.exists(temp_video_path):
-            os.remove(temp_video_path)
+            try:
+                os.remove(temp_video_path)
+            except Exception:
+                pass
 
         return jsonify({
             'success': True,
@@ -440,7 +470,10 @@ def download_and_extract_frames():
 
     except Exception as e:
         if os.path.exists(temp_video_path):
-            os.remove(temp_video_path)
+            try:
+                os.remove(temp_video_path)
+            except Exception:
+                pass
         return jsonify({'error': f'Erro na extração de frames: {str(e)}'}), 500
 
 @app.route('/api/live-stream-snapshot', methods=['GET', 'POST', 'OPTIONS'])
