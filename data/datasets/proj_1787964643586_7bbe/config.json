@@ -1,0 +1,164 @@
+{
+  "id": "proj_1787964643586_7bbe",
+  "name": "Detecção de Objetos (Bounding Box) Dataset",
+  "description": "Gera coordenadas retangulares normalizadas para treinar modelos como Ultralytics YOLOv11/v8, Detectron2, Faster R-CNN e SSD.",
+  "domain": "vision",
+  "taskType": "object_detection",
+  "classes": [
+    {
+      "id": "cls_1787964643586_0",
+      "name": "Pessoa",
+      "color": "#3b82f6",
+      "shortcutKey": "1",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964643586_1",
+      "name": "Veículo",
+      "color": "#10b981",
+      "shortcutKey": "2",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964643586_2",
+      "name": "Defeito",
+      "color": "#f59e0b",
+      "shortcutKey": "3",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964695502_7j69",
+      "name": "Boat",
+      "color": "#ef4444",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964696228_4kkh",
+      "name": "Chair",
+      "color": "#8b5cf6",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964696515_mne4",
+      "name": "Objeto_principal",
+      "color": "#ec4899",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964696515_5a6s",
+      "name": "Objeto_secundario",
+      "color": "#f97316",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964696882_l5w9",
+      "name": "Truck",
+      "color": "#f97316",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964697343_rdkv",
+      "name": "Surfboard",
+      "color": "#14b8a6",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964697343_7il9",
+      "name": "Airplane",
+      "color": "#eab308",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964698370_leuo",
+      "name": "Elemento_visual",
+      "color": "#eab308",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964846730_gz05",
+      "name": "Train",
+      "color": "#84cc16",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964846824_5fqz",
+      "name": "Mouse",
+      "color": "#3b82f6",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964846824_ia4k",
+      "name": "Cell phone",
+      "color": "#f59e0b",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964846824_or85",
+      "name": "Keyboard",
+      "color": "#8b5cf6",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964848602_lwmr",
+      "name": "Bus",
+      "color": "#ef4444",
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "classSets": [
+    {
+      "id": "cset_1787964643586_1",
+      "name": "Conjunto Padrão",
+      "classes": [
+        {
+          "id": "cls_1787964643586_0",
+          "name": "Pessoa",
+          "color": "#3b82f6",
+          "shortcutKey": "1",
+          "visible": true,
+          "locked": false
+        },
+        {
+          "id": "cls_1787964643586_1",
+          "name": "Veículo",
+          "color": "#10b981",
+          "shortcutKey": "2",
+          "visible": true,
+          "locked": false
+        },
+        {
+          "id": "cls_1787964643586_2",
+          "name": "Defeito",
+          "color": "#f59e0b",
+          "shortcutKey": "3",
+          "visible": true,
+          "locked": false
+        }
+      ],
+      "createdAt": 1787964643586
+    }
+  ],
+  "activeClassSetId": "cset_1787964643586_1",
+  "imagesCount": 14,
+  "textItemsCount": 0,
+  "audioItemsCount": 0,
+  "folderPath": "C:\\Users\\samue\\Documents\\antigravity\\modest-hypatia\\data\\datasets\\proj_1787964643586_7bbe",
+  "createdAt": 1787964643586,
+  "updatedAt": 1787964936182
+}

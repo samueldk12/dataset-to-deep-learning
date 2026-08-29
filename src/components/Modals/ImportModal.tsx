@@ -161,11 +161,36 @@ export const ImportModal: React.FC<ImportModalProps> = ({
       const updatedImages = [...project.images];
       let updatedClasses = [...project.classes];
 
+      // First pass: look for classes.txt or data.yaml to register class names
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const lower = file.name.toLowerCase();
+        if (lower.endsWith('classes.txt') || lower.endsWith('labels.txt')) {
+          const text = await readFileAsText(file);
+          const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+          lines.forEach((name, idx) => {
+            if (!updatedClasses.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+              updatedClasses.push({
+                id: `cls_${Date.now()}_${idx}`,
+                name,
+                color: updatedClasses[idx]?.color || '#3b82f6',
+                visible: true,
+                locked: false,
+                shortcutKey: idx < 9 ? String(idx + 1) : undefined,
+              });
+            }
+          });
+        }
+      }
+
+      // Second pass: parse annotations (COCO, Pascal VOC, YOLO txt)
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const text = await readFileAsText(file);
+        const lower = file.name.toLowerCase();
+        const baseName = file.name.replace(/\.[^/.]+$/, '');
 
-        if (file.name.toLowerCase().endsWith('.json')) {
+        if (lower.endsWith('.json')) {
           const coco = JSON.parse(text);
           const parsed = parseCOCO(coco, updatedClasses);
           updatedClasses = parsed.classes;
@@ -179,7 +204,7 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               };
             }
           });
-        } else if (file.name.toLowerCase().endsWith('.xml')) {
+        } else if (lower.endsWith('.xml')) {
           const res = parsePascalVOC(text, updatedClasses);
           updatedClasses = res.updatedClasses;
           const matchIdx = updatedImages.findIndex(
@@ -191,6 +216,25 @@ export const ImportModal: React.FC<ImportModalProps> = ({
               annotations: res.annotations,
               status: 'completed',
             };
+          }
+        } else if (lower.endsWith('.txt') && !lower.endsWith('classes.txt') && !lower.endsWith('labels.txt')) {
+          const matchIdx = updatedImages.findIndex(
+            (img) => img.name.replace(/\.[^/.]+$/, '') === baseName || img.name === `${baseName}.jpg` || img.name === `${baseName}.png`
+          );
+          if (matchIdx !== -1) {
+            const targetImg = updatedImages[matchIdx];
+            const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+            const parsedAnns = lines
+              .map((line) => parseYOLOLine(line, targetImg.width, targetImg.height, updatedClasses))
+              .filter(Boolean) as any[];
+
+            if (parsedAnns.length > 0) {
+              updatedImages[matchIdx] = {
+                ...targetImg,
+                annotations: parsedAnns,
+                status: 'completed',
+              };
+            }
           }
         }
       }

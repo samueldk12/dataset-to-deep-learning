@@ -1,0 +1,150 @@
+{
+  "id": "proj_1787964162090_zadx",
+  "name": "Detecção de Objetos (Bounding Box) Dataset",
+  "description": "Gera coordenadas retangulares normalizadas para treinar modelos como Ultralytics YOLOv11/v8, Detectron2, Faster R-CNN e SSD.",
+  "domain": "vision",
+  "taskType": "object_detection",
+  "classes": [
+    {
+      "id": "cls_1787964162090_0",
+      "name": "Pessoa",
+      "color": "#3b82f6",
+      "shortcutKey": "1",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964162090_1",
+      "name": "Veículo",
+      "color": "#10b981",
+      "shortcutKey": "2",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964162090_2",
+      "name": "Defeito",
+      "color": "#f59e0b",
+      "shortcutKey": "3",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964469124_742v",
+      "name": "Suitcase",
+      "color": "#ef4444",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964469124_ol3x",
+      "name": "Tv",
+      "color": "#ec4899",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964518056_lm2p",
+      "name": "Objeto_principal",
+      "color": "#ec4899",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964518056_86ws",
+      "name": "Objeto_secundario",
+      "color": "#f97316",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964518056_rb6k",
+      "name": "Elemento_visual",
+      "color": "#a855f7",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964518056_bwpb",
+      "name": "Detalhe_estrutural",
+      "color": "#84cc16",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964600918_icuc",
+      "name": "Umbrella",
+      "color": "#a855f7",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964600918_rmgf",
+      "name": "Traffic light",
+      "color": "#84cc16",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964601312_al0t",
+      "name": "Orange",
+      "color": "#84cc16",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964601312_92np",
+      "name": "Apple",
+      "color": "#10b981",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "cls_1787964601722_s0o0",
+      "name": "Airplane",
+      "color": "#10b981",
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "classSets": [
+    {
+      "id": "cset_1787964162090_1",
+      "name": "Conjunto Padrão",
+      "classes": [
+        {
+          "id": "cls_1787964162090_0",
+          "name": "Pessoa",
+          "color": "#3b82f6",
+          "shortcutKey": "1",
+          "visible": true,
+          "locked": false
+        },
+        {
+          "id": "cls_1787964162090_1",
+          "name": "Veículo",
+          "color": "#10b981",
+          "shortcutKey": "2",
+          "visible": true,
+          "locked": false
+        },
+        {
+          "id": "cls_1787964162090_2",
+          "name": "Defeito",
+          "color": "#f59e0b",
+          "shortcutKey": "3",
+          "visible": true,
+          "locked": false
+        }
+      ],
+      "createdAt": 1787964162090
+    }
+  ],
+  "activeClassSetId": "cset_1787964162090_1",
+  "imagesCount": 10,
+  "textItemsCount": 0,
+  "audioItemsCount": 0,
+  "folderPath": "C:\\Users\\samue\\Documents\\antigravity\\modest-hypatia\\data\\datasets\\proj_1787964162090_zadx",
+  "createdAt": 1787964162090,
+  "updatedAt": 1787964620689
+}
