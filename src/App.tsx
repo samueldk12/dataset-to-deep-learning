@@ -826,6 +826,10 @@ export const App: React.FC = () => {
               setNewDatasetModalTask(taskType);
               setIsNewDatasetModalOpen(true);
             }}
+            onNavigateToDataset={(domain, projectId) => {
+              setCurrentProjectId(projectId);
+              setCurrentView(domain);
+            }}
           />
         )}
 

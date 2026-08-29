@@ -22,7 +22,8 @@ import {
   PanelLeftOpen,
   Globe,
   Database,
-  Edit3
+  Edit3,
+  X
 } from 'lucide-react';
 import { 
   AnnotationPipeline, 
@@ -41,12 +42,23 @@ import { NodePalette } from '../Pipeline/NodePalette';
 import { NewPipelineModal } from '../Modals/NewPipelineModal';
 import { PipelineTriggerModal } from '../Modals/PipelineTriggerModal';
 
+interface PipelineRunNotification {
+  id: string;
+  pipelineName: string;
+  datasetId: string;
+  datasetName: string;
+  domain: DomainCategory;
+  itemsProcessed: number;
+  timeMs: number;
+}
+
 interface PipelineStudioWorkspaceProps {
   project: DatasetProject;
   projects?: DatasetProject[];
   onUpdateProject: (updated: DatasetProject) => void;
   onOpenExportModal?: () => void;
   onOpenNewDatasetModal?: (domain?: DomainCategory, taskType?: DatasetTaskType) => void;
+  onNavigateToDataset?: (domain: DomainCategory, projectId: string) => void;
 }
 
 export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = ({
@@ -55,6 +67,7 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
   onUpdateProject,
   onOpenExportModal,
   onOpenNewDatasetModal,
+  onNavigateToDataset,
 }) => {
   // Pipelines Storage
   const [savedPipelines, setSavedPipelines] = useState<AnnotationPipeline[]>(() => {
@@ -115,6 +128,8 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
   const [currentStepName, setCurrentStepName] = useState('');
   const [lastResult, setLastResult] = useState<PipelineExecutionResult | null>(null);
   const [isBatchRunning, setIsBatchRunning] = useState(false);
+  const [runNotification, setRunNotification] = useState<PipelineRunNotification | null>(null);
+  const notifTimerRef = useRef<any>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -530,6 +545,23 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
 
     if (aggregatedResult && aggregatedResult.success) {
       onUpdateProject(updatedProject);
+
+      // Trigger temporary toast notification
+      const notif: PipelineRunNotification = {
+        id: `notif_${Date.now()}`,
+        pipelineName: pipeToRun.name,
+        datasetId: targetProject.id,
+        datasetName: targetProject.name,
+        domain: targetProject.domain,
+        itemsProcessed: totalItems,
+        timeMs: aggregatedResult.totalTimeMs || 850,
+      };
+
+      setRunNotification(notif);
+      if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+      notifTimerRef.current = setTimeout(() => {
+        setRunNotification(null);
+      }, 9000);
     }
   };
 
@@ -703,6 +735,56 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
           pipelines={savedPipelines}
           projects={projects}
         />
+
+        {/* TEMPORARY TOAST NOTIFICATION AFTER RUNNING PIPELINE */}
+        {runNotification && (
+          <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300 pointer-events-auto max-w-md w-full shadow-2xl">
+            <div className="flex items-start gap-3.5 bg-slate-900/95 border border-purple-500/40 rounded-2xl p-4 shadow-2xl backdrop-blur-md ring-1 ring-purple-500/20">
+              <div className="p-2.5 rounded-xl bg-gradient-to-tr from-purple-600/30 to-indigo-600/30 border border-purple-500/30 text-purple-300 shrink-0 mt-0.5">
+                <Sparkles className="w-5 h-5" />
+              </div>
+
+              <div className="flex-1 flex flex-col min-w-0">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-100">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Pipeline Executado com Sucesso!</span>
+                </div>
+                <p className="text-xs text-slate-300 mt-1">
+                  <span className="text-purple-300 font-semibold">"{runNotification.pipelineName}"</span> processou {runNotification.itemsProcessed} {runNotification.domain === 'nlp' ? 'textos' : runNotification.domain === 'audio' ? 'áudios' : 'amostras/imagens'} no dataset <span className="text-slate-100 font-semibold">{runNotification.datasetName}</span>.
+                </p>
+
+                <div className="flex items-center gap-2 mt-3">
+                  {onNavigateToDataset && (
+                    <button
+                      onClick={() => {
+                        onNavigateToDataset(runNotification.domain, runNotification.datasetId);
+                        setRunNotification(null);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-md shadow-purple-600/30 transition-all hover:scale-[1.02] active:scale-98 cursor-pointer"
+                    >
+                      <span>Ver no Dataset</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setRunNotification(null)}
+                    className="px-3 py-1.5 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 text-xs font-medium transition-colors cursor-pointer"
+                  >
+                    Dispensar
+                  </button>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setRunNotification(null)}
+                className="p-1 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+                title="Fechar notificação"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1041,6 +1123,56 @@ export const PipelineStudioWorkspace: React.FC<PipelineStudioWorkspaceProps> = (
         pipelines={savedPipelines}
         projects={projects}
       />
+
+      {/* TEMPORARY TOAST NOTIFICATION AFTER RUNNING PIPELINE */}
+      {runNotification && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300 pointer-events-auto max-w-md w-full shadow-2xl">
+          <div className="flex items-start gap-3.5 bg-slate-900/95 border border-purple-500/40 rounded-2xl p-4 shadow-2xl backdrop-blur-md ring-1 ring-purple-500/20">
+            <div className="p-2.5 rounded-xl bg-gradient-to-tr from-purple-600/30 to-indigo-600/30 border border-purple-500/30 text-purple-300 shrink-0 mt-0.5">
+              <Sparkles className="w-5 h-5" />
+            </div>
+
+            <div className="flex-1 flex flex-col min-w-0">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-100">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Pipeline Executado com Sucesso!</span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1">
+                <span className="text-purple-300 font-semibold">"{runNotification.pipelineName}"</span> processou {runNotification.itemsProcessed} {runNotification.domain === 'nlp' ? 'textos' : runNotification.domain === 'audio' ? 'áudios' : 'amostras/imagens'} no dataset <span className="text-slate-100 font-semibold">{runNotification.datasetName}</span>.
+              </p>
+
+              <div className="flex items-center gap-2 mt-3">
+                {onNavigateToDataset && (
+                  <button
+                    onClick={() => {
+                      onNavigateToDataset(runNotification.domain, runNotification.datasetId);
+                      setRunNotification(null);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-md shadow-purple-600/30 transition-all hover:scale-[1.02] active:scale-98 cursor-pointer"
+                  >
+                    <span>Ver no Dataset</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button
+                  onClick={() => setRunNotification(null)}
+                  className="px-3 py-1.5 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 text-xs font-medium transition-colors cursor-pointer"
+                >
+                  Dispensar
+                </button>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setRunNotification(null)}
+              className="p-1 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+              title="Fechar notificação"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
