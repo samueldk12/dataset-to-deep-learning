@@ -110,46 +110,16 @@ export const NewDatasetModal: React.FC<NewDatasetModalProps> = ({
       images: [],
       activeImageId: null,
       textItems: [],
-      qaItems: selectedTask === 'extractive_qa' ? [
-        {
-          id: `qa_${Date.now()}`,
-          context: 'O sistema de visão computacional processa imagens e identifica padrões através de convoluções.',
-          question: 'O que o sistema processa?',
-          answerStart: 42,
-          answerEnd: 49,
-          answerText: 'imagens',
-        }
-      ] : [],
-      sqlItems: selectedTask === 'text_to_sql' ? [
-        {
-          id: `sql_${Date.now()}`,
-          question: 'Quantos usuários estão ativos?',
-          databaseSchema: 'CREATE TABLE users (id INT, status VARCHAR(20));',
-          sql: "SELECT COUNT(*) FROM users WHERE status = 'ativo';",
-        }
-      ] : [],
-      cotItems: selectedTask === 'chain_of_thought' ? [
-        {
-          id: `cot_${Date.now()}`,
-          prompt: 'Qual o dobro de 15 somado a 10?',
-          thought: '1. Dobro de 15 é 15 * 2 = 30.\n2. Somando 10 temos 30 + 10 = 40.',
-          response: 'O resultado é 40.',
-        }
-      ] : [],
-      audioItems: selectedDomain === 'audio' ? [
-        {
-          id: `aud_${Date.now()}`,
-          name: 'amostra_audio_1.wav',
-          audioUrl: 'https://actions.google.com/sounds/v1/ambiences/outdoor_ambience.ogg',
-          durationSec: 8.4,
-          transcription: 'Gravação inicial de teste do dataset.',
-          status: 'completed',
-          diarizationSegments: [
-            { id: 'd1', start: 0.0, end: 4.0, speaker: 'Locutor_1', text: 'Gravação inicial de teste' },
-            { id: 'd2', start: 4.2, end: 8.0, speaker: 'Locutor_2', text: 'do dataset.' },
-          ],
-        }
-      ] : [],
+      qaItems: [],
+      sqlItems: [],
+      cotItems: [],
+      toolCallItems: [],
+      ragItems: [],
+      corefItems: [],
+      relationItems: [],
+      sentencePairItems: [],
+      audioItems: [],
+      llmItems: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };

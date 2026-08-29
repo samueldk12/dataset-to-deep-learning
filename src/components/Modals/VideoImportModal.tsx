@@ -113,6 +113,26 @@ export const VideoImportModal: React.FC<VideoImportModalProps> = ({
     }
   }, []);
 
+  // Reset state when opening modal
+  useEffect(() => {
+    if (isOpen) {
+      setVideoFile(null);
+      setVideoUrlInput('');
+      setActiveVideoSrc(null);
+      setStagedFrames([]);
+      setIsExtracting(false);
+      setExtractProgress(0);
+      setExtractStatus('');
+      setErrorMsg(null);
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setDuration(0);
+      setSourceType('upload');
+    } else {
+      stopWebcam();
+    }
+  }, [isOpen, stopWebcam]);
+
   // Cleanup object URLs and webcam on unmount
   useEffect(() => {
     return () => {

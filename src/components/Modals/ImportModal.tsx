@@ -46,6 +46,16 @@ export const ImportModal: React.FC<ImportModalProps> = ({
   const zipInputRef = useRef<HTMLInputElement>(null);
   const annotationInputRef = useRef<HTMLInputElement>(null);
 
+  React.useEffect(() => {
+    if (isOpen) {
+      setActiveTab('images');
+      setIsProcessing(false);
+      setProgressStatus('');
+      setProgressPercent(0);
+      setErrorMsg(null);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   /* 1. Handle Multiple Images Upload */

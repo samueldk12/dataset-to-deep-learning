@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { FolderPlus, UploadCloud, Video, FileArchive } from 'lucide-react';
 import { Header } from './components/Header';
 import { HomeHub } from './components/HomeHub';
 import { Toolbar } from './components/Toolbar';
@@ -880,33 +881,75 @@ export const App: React.FC = () => {
                 onBrushModeChange={setBrushMode}
               />
 
-              <Canvas
-                image={activeImage}
-                classes={currentProject.classes}
-                activeClassId={activeClassId}
-                activeTool={activeTool}
-                selectedAnnotationId={selectedAnnotationId}
-                selectedAnnotationIds={selectedAnnotationIds}
-                onSelectAnnotation={handleSelectAnnotation}
-                onAddAnnotation={handleAddAnnotation}
-                onUpdateAnnotation={handleUpdateAnnotation}
-                onDeleteAnnotation={handleDeleteAnnotation}
-                onMergeAnnotations={handleMergeAnnotations}
-                onPropagateToNext={handlePropagateToNext}
-                onCloneFromPrevious={handleCloneFromPrevious}
-                onSelectTool={setActiveTool}
-                onFitScreen={() => setTransform({ scale: 0.95, offsetX: 0, offsetY: 0 })}
-                onOpenAIModal={() => setIsAIModalOpen(true)}
-                onUndo={handleUndo}
-                onRedo={handleRedo}
-                wandTolerance={wandTolerance}
-                wandContiguous={wandContiguous}
-                brushSize={brushSize}
-                brushMode={brushMode}
-                transform={transform}
-                onTransformChange={setTransform}
-                filters={filters}
-              />
+              <div className="flex-1 relative w-full h-full overflow-hidden">
+                <Canvas
+                  image={activeImage}
+                  classes={currentProject.classes}
+                  activeClassId={activeClassId}
+                  activeTool={activeTool}
+                  selectedAnnotationId={selectedAnnotationId}
+                  selectedAnnotationIds={selectedAnnotationIds}
+                  onSelectAnnotation={handleSelectAnnotation}
+                  onAddAnnotation={handleAddAnnotation}
+                  onUpdateAnnotation={handleUpdateAnnotation}
+                  onDeleteAnnotation={handleDeleteAnnotation}
+                  onMergeAnnotations={handleMergeAnnotations}
+                  onPropagateToNext={handlePropagateToNext}
+                  onCloneFromPrevious={handleCloneFromPrevious}
+                  onSelectTool={setActiveTool}
+                  onFitScreen={() => setTransform({ scale: 0.95, offsetX: 0, offsetY: 0 })}
+                  onOpenAIModal={() => setIsAIModalOpen(true)}
+                  onUndo={handleUndo}
+                  onRedo={handleRedo}
+                  wandTolerance={wandTolerance}
+                  wandContiguous={wandContiguous}
+                  brushSize={brushSize}
+                  brushMode={brushMode}
+                  transform={transform}
+                  onTransformChange={setTransform}
+                  filters={filters}
+                />
+
+                {/* Empty Dataset Action Card */}
+                {(!activeImage || currentProject.images.length === 0) && (
+                  <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none p-4">
+                    <div className="pointer-events-auto bg-slate-900/95 border border-slate-800 rounded-2xl p-8 max-w-md w-full shadow-2xl backdrop-blur-md text-center flex flex-col items-center gap-4">
+                      <div className="w-14 h-14 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                        <FolderPlus className="w-7 h-7" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-semibold text-slate-100">{currentProject.name}</h3>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Este dataset está vazio. Adicione imagens ou extraia frames de vídeos para começar a anotar.
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-2 w-full mt-2">
+                        <button
+                          onClick={() => quickFileInputRef.current?.click()}
+                          className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/25 transition-all flex items-center justify-center gap-2"
+                        >
+                          <UploadCloud className="w-4 h-4" />
+                          <span>Selecionar Imagens do Computador</span>
+                        </button>
+                        <button
+                          onClick={() => setIsVideoStudioOpen(true)}
+                          className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-indigo-300 border border-indigo-500/30 text-xs font-medium transition-all flex items-center justify-center gap-2"
+                        >
+                          <Video className="w-4 h-4 text-indigo-400" />
+                          <span>Extrair de Vídeo ou Link da Web</span>
+                        </button>
+                        <button
+                          onClick={() => setIsImportOpen(true)}
+                          className="w-full py-2 px-4 rounded-xl bg-transparent hover:bg-slate-800/60 text-slate-400 text-xs font-medium transition-all flex items-center justify-center gap-1.5"
+                        >
+                          <FileArchive className="w-3.5 h-3.5" />
+                          <span>Carregar Arquivo ZIP / COCO / YOLO</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Bottom Canvas Controls */}
               <CanvasControls
