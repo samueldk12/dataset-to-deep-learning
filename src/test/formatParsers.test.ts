@@ -135,6 +135,27 @@ describe('Format Parsers & Exporters (Unit Tests)', () => {
       expect(yaml).toContain('1: Pedestrian');
     });
 
+    it('parses a YOLO prediction line with a trailing confidence score', () => {
+      // Common real-world format: class x_center y_center width height confidence
+      const line = '0 0.250000 0.416667 0.250000 0.333333 0.87';
+      const ann = parseYOLOLine(line, 800, 600, sampleClasses);
+      expect(ann).not.toBeNull();
+      expect(ann?.type).toBe('bbox');
+      expect(ann?.classId).toBe('cls_car');
+      expect(ann?.points[0].x).toBeCloseTo(100);
+      expect(ann?.points[1].x).toBeCloseTo(300);
+    });
+
+    it('keeps a mismatched/out-of-range class index visible instead of silently relabeling it as class 0', () => {
+      // Only 2 classes exist (indices 0-1), but this line references index 7 --
+      // e.g. a labels file exported against a different, larger classes.txt.
+      const line = '7 0.5 0.5 0.2 0.2';
+      const ann = parseYOLOLine(line, 800, 600, sampleClasses);
+      expect(ann).not.toBeNull();
+      expect(ann?.classId).not.toBe('cls_car'); // must NOT silently become class 0's id
+      expect(ann?.classId).toContain('7');
+    });
+
     it('generates YOLO Darknet obj.data configuration', () => {
       const darknet = generateYOLODataYaml(sampleProject, 'darknet', 'detection', false);
       expect(darknet).toContain('classes = 2');
@@ -159,9 +180,64 @@ describe('Format Parsers & Exporters (Unit Tests)', () => {
       expect(parsed.imagesWithAnnotations.has('test_image.jpg')).toBe(true);
       expect(parsed.imagesWithAnnotations.get('test_image.jpg')?.length).toBe(3);
     });
+
+    it('exports skeleton (pose) annotations as COCO keypoints instead of dropping them', () => {
+      const skeletonImage: DatasetImage = {
+        ...sampleImage,
+        id: 'img_pose',
+        name: 'pose_image.jpg',
+        annotations: [
+          {
+            id: 'ann_skeleton',
+            classId: 'cls_ped',
+            type: 'skeleton',
+            points: [
+              { x: 10, y: 10 }, { x: 12, y: 8 }, { x: 8, y: 8 },
+              { x: 0, y: 0 }, // unlabeled/occluded joint -> should be marked not-visible
+            ],
+            visible: true,
+            locked: false,
+          },
+        ],
+      };
+      const project: DatasetProject = { ...sampleProject, images: [skeletonImage] };
+      const coco = exportToCOCO(project);
+
+      expect(coco.annotations.length).toBe(1);
+      const ann = coco.annotations[0];
+      expect(ann.keypoints).toBeDefined();
+      expect(ann.keypoints!.length).toBe(4 * 3); // x, y, visibility per point
+      expect(ann.num_keypoints).toBe(3); // the (0,0) point is treated as not visible
+      expect(ann.keypoints![9]).toBe(0);
+      expect(ann.keypoints![10]).toBe(0);
+      expect(ann.keypoints![11]).toBe(0); // visibility flag for the (0,0) point
+    });
   });
 
   describe('Pascal VOC XML Format', () => {
+    it('never emits a zero-width/zero-height box for a tiny annotation at the image edge', () => {
+      const tinyEdgeImage: DatasetImage = {
+        ...sampleImage,
+        annotations: [
+          {
+            id: 'ann_tiny',
+            classId: 'cls_car',
+            type: 'bbox',
+            points: [{ x: 0, y: 0 }, { x: 0.5, y: 0.5 }],
+            visible: true,
+            locked: false,
+          },
+        ],
+      };
+      const xml = exportImageToPascalVOC(tinyEdgeImage, sampleClasses);
+      const xmin = Number(xml.match(/<xmin>(\d+)<\/xmin>/)?.[1]);
+      const xmax = Number(xml.match(/<xmax>(\d+)<\/xmax>/)?.[1]);
+      const ymin = Number(xml.match(/<ymin>(\d+)<\/ymin>/)?.[1]);
+      const ymax = Number(xml.match(/<ymax>(\d+)<\/ymax>/)?.[1]);
+      expect(xmax).toBeGreaterThan(xmin);
+      expect(ymax).toBeGreaterThan(ymin);
+    });
+
     it('exports image to Pascal VOC XML', () => {
       const xml = exportImageToPascalVOC(sampleImage, sampleClasses);
       expect(xml).toContain('<filename>test_image.jpg</filename>');

@@ -31,6 +31,7 @@ export interface COCODataset {
     bbox?: [number, number, number, number]; // [x, y, width, height]
     iscrowd?: number;
     keypoints?: number[];
+    num_keypoints?: number;
   }>;
   categories: Array<{
     id: number | string;
@@ -75,6 +76,7 @@ export function exportToCOCO(project: DatasetProject): COCODataset {
 
       let segmentation: number[][] | undefined = undefined;
       let keypoints: number[] | undefined = undefined;
+      let numKeypoints: number | undefined = undefined;
 
       if (ann.type === 'polygon' && ann.points.length >= 3) {
         const segPoints: number[] = [];
@@ -84,6 +86,15 @@ export function exportToCOCO(project: DatasetProject): COCODataset {
         segmentation = [segPoints];
       } else if (ann.type === 'keypoint' && ann.points.length > 0) {
         keypoints = [ann.points[0].x, ann.points[0].y, 2];
+        numKeypoints = 1;
+      } else if (ann.type === 'skeleton' && ann.points.length > 0) {
+        keypoints = [];
+        numKeypoints = 0;
+        ann.points.forEach((p) => {
+          const visible = p.x !== 0 || p.y !== 0;
+          keypoints!.push(Math.round(p.x * 100) / 100, Math.round(p.y * 100) / 100, visible ? 2 : 0);
+          if (visible) numKeypoints!++;
+        });
       }
 
       annotations.push({
@@ -99,7 +110,7 @@ export function exportToCOCO(project: DatasetProject): COCODataset {
           Math.round(box.height * 100) / 100,
         ],
         iscrowd: 0,
-        ...(keypoints ? { keypoints } : {}),
+        ...(keypoints ? { keypoints, num_keypoints: numKeypoints } : {}),
       });
     });
   });
@@ -262,10 +273,14 @@ export function parseYOLOLine(
   if (parts.length < 5 || isNaN(parts[0])) return null;
 
   const classIdx = parts[0];
-  const targetClass = classes[classIdx] || classes[0];
-  const classId = targetClass ? targetClass.id : 'cls_0';
+  const targetClass = classes[classIdx];
+  // Out-of-range indices (e.g. a labels file exported against a different
+  // classes.txt) are kept as their own distinguishable placeholder instead of
+  // being silently relabeled as class 0 -- so mismatched imports stay visible
+  // to the user instead of quietly corrupting an unrelated class's data.
+  const classId = targetClass ? targetClass.id : `cls_unknown_${classIdx}`;
 
-  if (parts.length === 5) {
+  if (parts.length === 5 || parts.length === 6) {
     const [, xcNorm, ycNorm, wNorm, hNorm] = parts;
     const xc = xcNorm * imgWidth;
     const yc = ycNorm * imgHeight;
@@ -409,8 +424,8 @@ export function exportImageToPascalVOC(image: DatasetImage, classes: DatasetClas
       const box = getBoundingBox(ann.points, ann.type);
       const xmin = Math.max(1, Math.round(box.x));
       const ymin = Math.max(1, Math.round(box.y));
-      const xmax = Math.min(image.width, Math.round(box.x + box.width));
-      const ymax = Math.min(image.height, Math.round(box.y + box.height));
+      const xmax = Math.max(xmin + 1, Math.min(image.width, Math.round(box.x + box.width)));
+      const ymax = Math.max(ymin + 1, Math.min(image.height, Math.round(box.y + box.height)));
 
       return `  <object>
     <name>${escapeXml(className)}</name>

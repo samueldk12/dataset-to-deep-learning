@@ -61,6 +61,45 @@ describe('Data Augmentation Coordinate Transformation Engine', () => {
     expect(result.y).toBe(500); // 800 - 300
   });
 
+  it('composes shear + horizontal flip in the same order the canvas renderer applies them', () => {
+    // The canvas renderer composes ctx.translate -> rotate -> scale -> flip -> shear,
+    // which (because each ctx call pre-multiplies the CTM) means shear is applied to a
+    // point FIRST, then flip, then scale, then rotate, then translate. transformPoint
+    // must mirror that exact order or annotation boxes drift off the augmented pixels
+    // whenever shear is combined with flip/rotation.
+    const width = 200;
+    const height = 200;
+    const shearDeg = 20;
+    const pt = { x: 150, y: 120 };
+    const transforms = {
+      flipH: true,
+      flipV: false,
+      rotationDeg: 0,
+      scale: 1,
+      shearDeg,
+      translateX: 0,
+      translateY: 0,
+      brightnessFactor: 1,
+      contrastFactor: 1,
+      saturationFactor: 1,
+      hueShiftDeg: 0,
+      isGrayscale: false,
+      blurRadius: 0,
+      noiseAmount: 0,
+      cutoutHoles: [],
+    };
+
+    const result = transformPoint(pt, width, height, transforms);
+
+    // Ground truth computed by hand from the shear -> flip -> translate composition:
+    // lx = pt.x - cx = 50, ly = pt.y - cy = 20
+    // shear: lx' = lx + ly * tan(20deg) ≈ 57.2794
+    // flip:  lx'' = -lx' ≈ -57.2794
+    // translate: x = cx + lx'' ≈ 42.7206, y = cy + ly = 120
+    expect(result.x).toBeCloseTo(42.7206, 3);
+    expect(result.y).toBeCloseTo(120, 3);
+  });
+
   it('correctly transforms and encloses Bounding Boxes under Horizontal Flip', () => {
     const bboxAnn: Annotation = {
       id: 'ann_test',

@@ -160,12 +160,28 @@ export async function extractFramesFromVideo(
 
 function seekVideoTo(video: HTMLVideoElement, time: number): Promise<void> {
   return new Promise((resolve) => {
-    const onSeeked = () => {
+    const target = Math.min(time, video.duration - 0.05);
+
+    // Some browsers never fire 'seeked' for a no-op seek (target === currentTime).
+    if (Math.abs(video.currentTime - target) < 0.01) {
+      resolve();
+      return;
+    }
+
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
       video.removeEventListener('seeked', onSeeked);
+      clearTimeout(timeoutId);
       resolve();
     };
+    const onSeeked = () => finish();
+    // Safety net: never hang the extraction loop indefinitely.
+    const timeoutId = setTimeout(finish, 3000);
+
     video.addEventListener('seeked', onSeeked);
-    video.currentTime = Math.min(time, video.duration - 0.05);
+    video.currentTime = target;
   });
 }
 

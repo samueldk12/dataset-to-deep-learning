@@ -209,7 +209,7 @@ def handle_mcp_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
                         "content": [
                             {
                                 "type": "text",
-                                "text": f"Detecção concluída com sucesso usando modelo '{model_id}'. Total de objetos detectados: {len(preds['predictions'])} (Resolução: {w}x{h}).",
+                                "text": f"Detecção concluída com sucesso usando modelo '{model_id}'. Total de objetos detectados: {len(preds['detections'])} (Resolução: {w}x{h}).",
                             },
                             {
                                 "type": "text",
@@ -246,6 +246,56 @@ def handle_mcp_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
                             "type": "text",
                             "text": res.get("text", "[]"),
                         }
+                    ]
+                },
+            }
+
+        if tool_name == "annotatex_gemini_transcribe_audio":
+            from gemini_service import call_gemini_api
+            audio_data = args.get("audio_url_or_base64", "")
+            audio_name = args.get("audio_name", "audio.wav")
+            audio_b64 = audio_data
+            if audio_b64.startswith("http://") or audio_b64.startswith("https://"):
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{
+                            "type": "text",
+                            "text": "Transcrição via URL remota ainda não é suportada; envie o áudio como Base64.",
+                        }]
+                    },
+                }
+            ext = audio_name.split('.')[-1].lower() if '.' in audio_name else 'wav'
+            mime = {'mp3': 'audio/mpeg', 'wav': 'audio/wav', 'm4a': 'audio/mp4', 'ogg': 'audio/ogg'}.get(ext, 'audio/wav')
+            prompt = (
+                "Transcreva este áudio. Responda em JSON estrito com o formato: "
+                '{"transcript": "...", "language": "...", "segments": '
+                '[{"speaker": "A", "startSec": 0.0, "endSec": 1.0, "text": "..."}], '
+                '"acousticEvents": ["..."]}'
+            )
+            res = call_gemini_api(
+                prompt,
+                model="gemini-2.5-flash",
+                response_mime_type="application/json",
+                audio_base64=audio_b64,
+                audio_mime_type=mime,
+            )
+            if not res.get("success"):
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{"type": "text", "text": f"Falha na transcrição: {res.get('error', 'erro desconhecido')}"}]
+                    },
+                }
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [
+                        {"type": "text", "text": "Transcrição concluída via Gemini 2.5 Flash."},
+                        {"type": "text", "text": res.get("text", "{}")},
                     ]
                 },
             }
@@ -299,17 +349,29 @@ def handle_mcp_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
                 },
             }
 
+        known_tool_names = {t["name"] for t in MCP_TOOLS}
+        if tool_name in known_tool_names:
+            # Advertised in tools/list but no server-side handler exists yet (these operate on
+            # dataset/annotation state that isn't addressable through this tool's current input
+            # schema). Say so honestly instead of claiming a no-op succeeded.
+            return {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"A ferramenta '{tool_name}' ainda não possui execução implementada neste servidor MCP. Use a interface web do AnnotateX Studio para esta ação.",
+                        }
+                    ],
+                    "isError": True,
+                },
+            }
+
         return {
             "jsonrpc": "2.0",
             "id": req_id,
-            "result": {
-                "content": [
-                    {
-                        "type": "text",
-                        "text": f"Ferramenta MCP '{tool_name}' executada com sucesso com parâmetros: {json.dumps(args, ensure_ascii=False)}",
-                    }
-                ]
-            },
+            "error": {"code": -32602, "message": f"Ferramenta MCP desconhecida: '{tool_name}'"},
         }
 
     return {

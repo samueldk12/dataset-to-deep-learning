@@ -13,6 +13,8 @@ from flask import Flask, request, jsonify, Response, send_file, send_from_direct
 from flask_cors import CORS
 import yt_dlp
 
+from ssrf_guard import is_safe_remote_url
+
 try:
     import imageio_ffmpeg
     FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
@@ -22,7 +24,12 @@ except Exception:
 DIST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'dist'))
 
 app = Flask(__name__, static_folder=DIST_DIR, static_url_path='')
-CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+# This app uses no cookies/session auth, so supports_credentials must stay False --
+# combined with a wildcard origin, "credentials=True" would make flask-cors reflect
+# the caller's Origin instead of "*", letting ANY site make authenticated-looking
+# cross-origin requests. Wildcard origin is otherwise a deliberate choice for this
+# local single-user tool (no login system exists to scope it to).
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
 
 TEMP_DIR = os.path.join(tempfile.gettempdir(), 'annotatex_videos')
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -30,11 +37,15 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 DATASETS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data', 'datasets'))
 os.makedirs(DATASETS_DIR, exist_ok=True)
 
-def get_dataset_folder(dataset_id: str) -> str:
-    safe_id = "".join(c for c in str(dataset_id) if c.isalnum() or c in ('_', '-')).strip()
+def sanitize_id(value: str, fallback_prefix: str) -> str:
+    """Strips any path-traversal / separator characters from an ID that will be used to build a filesystem path."""
+    safe_id = "".join(c for c in str(value) if c.isalnum() or c in ('_', '-')).strip()
     if not safe_id:
-        safe_id = f"dataset_{int(time.time())}"
-    return os.path.join(DATASETS_DIR, safe_id)
+        safe_id = f"{fallback_prefix}_{int(time.time())}"
+    return safe_id
+
+def get_dataset_folder(dataset_id: str) -> str:
+    return os.path.join(DATASETS_DIR, sanitize_id(dataset_id, 'dataset'))
 
 def save_dataset_to_disk(project_data: dict) -> dict:
     dataset_id = project_data.get('id') or f"proj_{int(time.time())}"
@@ -50,13 +61,14 @@ def save_dataset_to_disk(project_data: dict) -> dict:
     os.makedirs(audios_dir, exist_ok=True)
 
     classes = project_data.get('classes', [])
-    class_id_to_idx = {c['id']: idx for idx, c in enumerate(classes)}
+    class_id_to_idx = {c['id']: idx for idx, c in enumerate(classes) if c.get('id')}
 
     images = project_data.get('images', [])
     processed_images = []
 
     for img in images:
-        img_id = img.get('id') or f"img_{int(time.time())}"
+        img_id = sanitize_id(img.get('id') or '', 'img')
+        img['id'] = img_id
         url = img.get('url', '')
         
         # Save base64 image as physical file in images/
@@ -361,6 +373,11 @@ def run_pipeline_code():
     annotations = data.get('annotations', [])
 
     safe_globals = {
+        # Without an explicit (even empty) '__builtins__' entry, Python auto-injects
+        # the real builtins module into exec()'s globals, which defeats this allow-list
+        # entirely (e.g. via __import__('os').system(...)). Restricting it to just the
+        # functions below is the actual sandbox boundary.
+        '__builtins__': {},
         'annotations': annotations,
         'result_annotations': [],
         'logs': [],
@@ -498,6 +515,10 @@ def trigger_pipeline_via_api():
             r['lastTriggeredAt'] = int(os.path.getmtime(__file__) * 1000)
 
     # Optional async webhook callback dispatch
+    if webhook_callback and not is_safe_remote_url(webhook_callback):
+        print(f"Blocked webhook callback to disallowed address: {webhook_callback}")
+        webhook_callback = ''
+
     if webhook_callback:
         def send_callback():
             try:

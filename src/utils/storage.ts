@@ -88,13 +88,14 @@ export async function saveProjectToStorage(project: DatasetProject): Promise<voi
   // 2. Local IndexedDB Cache
   try {
     const db = await openDB();
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
       const req = store.put(project, KEY_CURRENT);
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
     });
+    return;
   } catch {
     // Fallback: try saving light version without large image URLs to LocalStorage
     try {
@@ -125,7 +126,7 @@ export async function loadProjectFromStorage(): Promise<DatasetProject | null> {
   // 2. Fallback to IndexedDB
   try {
     const db = await openDB();
-    return new Promise((resolve, reject) => {
+    return await new Promise<DatasetProject | null>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readonly');
       const store = tx.objectStore(STORE_NAME);
       const req = store.get(KEY_CURRENT);

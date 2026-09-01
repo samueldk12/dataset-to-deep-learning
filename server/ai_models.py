@@ -12,6 +12,8 @@ import numpy as np
 import cv2
 from typing import List, Dict, Any, Optional
 
+from ssrf_guard import is_safe_remote_url
+
 # Global cache of loaded model weights
 LOADED_MODELS: Dict[str, Any] = {}
 
@@ -117,6 +119,9 @@ def decode_image_input(img_data: str) -> Optional[np.ndarray]:
 
         # 1. HTTP or HTTPS remote URL
         if img_data.startswith("http://") or img_data.startswith("https://"):
+            if not is_safe_remote_url(img_data):
+                print(f"Blocked remote image fetch to disallowed address: {img_data}")
+                return None
             req = urllib.request.Request(
                 img_data, 
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -274,6 +279,11 @@ def run_ai_prediction(
     except Exception as e:
         print(f"AI inference error ({model_id}): {e}")
         detections = run_heuristic_detector(img_bgr)
+
+    if custom_classes:
+        allowed = {c.strip().lower() for c in custom_classes if c and c.strip()}
+        if allowed:
+            detections = [d for d in detections if d.get("className", "").strip().lower() in allowed]
 
     elapsed_ms = round((time.time() - start_time) * 1000, 1)
     return {

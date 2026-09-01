@@ -246,46 +246,47 @@ export function transformPoint(
   height: number,
   t: SampledTransforms
 ): Point {
-  let { x, y } = pt;
   const cx = width / 2;
   const cy = height / 2;
 
-  // 1. Horizontal Flip
-  if (t.flipH) {
-    x = width - x;
+  // Must mirror the exact composition order the canvas renderer uses in
+  // generateAugmentedImage (ctx.translate -> rotate -> scale -> flip -> shear):
+  // since each ctx.* call pre-multiplies the CTM, a point is affected by the
+  // *last*-called transform first. So per-point order is the reverse of the
+  // ctx call order: shear -> flip -> scale -> rotate -> translate.
+  let lx = pt.x - cx;
+  let ly = pt.y - cy;
+
+  // 1. Shear
+  if (t.shearDeg !== 0) {
+    const rad = (t.shearDeg * Math.PI) / 180;
+    lx = lx + ly * Math.tan(rad);
   }
 
-  // 2. Vertical Flip
-  if (t.flipV) {
-    y = height - y;
+  // 2. Flip
+  if (t.flipH) lx = -lx;
+  if (t.flipV) ly = -ly;
+
+  // 3. Scale around center
+  if (t.scale !== 1) {
+    lx *= t.scale;
+    ly *= t.scale;
   }
 
-  // 3. Rotation around center
+  // 4. Rotation around center
   if (t.rotationDeg !== 0) {
     const rad = (t.rotationDeg * Math.PI) / 180;
     const cos = Math.cos(rad);
     const sin = Math.sin(rad);
-    const dx = x - cx;
-    const dy = y - cy;
-    x = cx + (dx * cos - dy * sin);
-    y = cy + (dx * sin + dy * cos);
+    const rx = lx * cos - ly * sin;
+    const ry = lx * sin + ly * cos;
+    lx = rx;
+    ly = ry;
   }
 
-  // 4. Scale around center
-  if (t.scale !== 1) {
-    x = cx + (x - cx) * t.scale;
-    y = cy + (y - cy) * t.scale;
-  }
-
-  // 5. Shear
-  if (t.shearDeg !== 0) {
-    const rad = (t.shearDeg * Math.PI) / 180;
-    x = x + (y - cy) * Math.tan(rad);
-  }
-
-  // 6. Translation
-  x += t.translateX;
-  y += t.translateY;
+  // 5. Translation
+  const x = cx + t.translateX + lx;
+  const y = cy + t.translateY + ly;
 
   return { x, y };
 }

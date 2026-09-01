@@ -102,6 +102,7 @@ async function populateZipWithProject(
 ): Promise<void> {
   const total = project.images.length;
   const classMap = new Map<string, number>();
+  project.classes.forEach((c, idx) => classMap.set(c.id, idx));
   // Always include config.yaml and data.yaml at root by default
   root.file('config.yaml', generateConfigYaml(project));
   root.file('data.yaml', generateYOLODataYaml(project));
@@ -119,11 +120,10 @@ async function populateZipWithProject(
       const blob = await getImageBlob(img);
       if (blob) {
         imagesFolder.file(img.name, blob);
+        const baseName = img.name.replace(/\.[^/.]+$/, '');
+        const yoloTxt = exportImageToYOLO(img, classMap, 'detection');
+        labelsFolder.file(`${baseName}.txt`, yoloTxt);
       }
-
-      const baseName = img.name.replace(/\.[^/.]+$/, '');
-      const yoloTxt = exportImageToYOLO(img, classMap, 'detection');
-      labelsFolder.file(`${baseName}.txt`, yoloTxt);
     }
   } else if (format === 'coco') {
     const imagesFolder = root.folder('images')!;
@@ -152,11 +152,10 @@ async function populateZipWithProject(
       const blob = await getImageBlob(img);
       if (blob) {
         jpegFolder.file(img.name, blob);
+        const baseName = img.name.replace(/\.[^/.]+$/, '');
+        const vocXml = exportImageToPascalVOC(img, project.classes);
+        annotationsFolder.file(`${baseName}.xml`, vocXml);
       }
-
-      const baseName = img.name.replace(/\.[^/.]+$/, '');
-      const vocXml = exportImageToPascalVOC(img, project.classes);
-      annotationsFolder.file(`${baseName}.xml`, vocXml);
     }
   } else if (format === 'masks') {
     const imagesFolder = root.folder('images')!;
