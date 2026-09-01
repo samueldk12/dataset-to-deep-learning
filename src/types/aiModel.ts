@@ -1,29 +1,51 @@
 import { Annotation, DatasetClass, Point } from './dataset';
 
-export type AIModelType = 
-  | 'yolov11n'
-  | 'yolov11s'
-  | 'yolov11x'
-  | 'yolov11-seg'
-  | 'yolov11-pose'
-  | 'yolov8n'
-  | 'yolov8-seg'
-  | 'mobilenet-v3'
-  | 'resnet50'
-  | 'clip-zeroshot'
-  | 'heuristic-local';
+// Built-in model ids are a fixed set, but custom models (see utils/customModels.ts)
+// get user-chosen ids at runtime, so this widened to a plain string rather than a
+// closed union. BUILTIN_AI_MODEL_IDS below still documents/enumerates the built-ins.
+export type AIModelType = string;
+
+export const BUILTIN_AI_MODEL_IDS = [
+  'yolov11n',
+  'yolov11s',
+  'yolov11x',
+  'yolov11-seg',
+  'yolov11-pose',
+  'yolov8n',
+  'yolov8-seg',
+  'mobilenet-v3',
+  'resnet50',
+  'clip-zeroshot',
+  'heuristic-local',
+] as const;
+
+export type AIModelTask = 'detection' | 'segmentation' | 'pose' | 'classification' | 'zero-shot';
+export type AIAnnotationOutputType = 'bbox' | 'polygon' | 'keypoint' | 'tag';
 
 export interface AIModelInfo {
   id: AIModelType;
   name: string;
   architecture: string;
-  provider: 'Ultralytics' | 'PyTorch / Torchvision' | 'HuggingFace / OpenAI' | 'AnnotateX Engine';
-  task: 'detection' | 'segmentation' | 'pose' | 'classification' | 'zero-shot';
+  provider: string;
+  task: AIModelTask;
   description: string;
   classesCount: number | 'open-vocabulary';
   speed: string;
-  annotationType: 'bbox' | 'polygon' | 'keypoint' | 'tag';
+  annotationType: AIAnnotationOutputType;
   isLocalAvailable?: boolean;
+  /** Class names this model can produce (e.g. the 80 COCO classes). Omitted/undefined for
+   * open-vocabulary or unknown-taxonomy models -- use `classesCount === 'open-vocabulary'`
+   * or `isOpenVocabulary` to detect those instead of assuming an empty list means "none". */
+  supportedClasses?: string[];
+  isOpenVocabulary?: boolean;
+  /** true for a user-registered model (see utils/customModels.ts) as opposed to one of
+   * the built-ins the backend/catalogue ships with. */
+  isCustom?: boolean;
+  /** Only set for isCustom models: a full URL to a prediction endpoint implementing the
+   * same request/response contract as this app's own POST /api/ai/predict -- see
+   * utils/customModels.ts for the documented contract. */
+  endpointUrl?: string;
+  endpointApiKey?: string;
 }
 
 export interface AIPredictionConfig {
@@ -50,4 +72,11 @@ export interface AIPredictionResponse {
   inferenceTimeMs: number;
   detections: AIDetectionItem[];
   error?: string;
+}
+
+export interface AIModelFilter {
+  /** Free-text match against model name/description/architecture and (if present)
+   * supportedClasses -- covers both "search by model" and "search by class/category". */
+  searchText?: string;
+  annotationType?: AIAnnotationOutputType | 'all';
 }
