@@ -5,6 +5,8 @@ import base64
 import time
 import shutil
 import tempfile
+import ast
+import uuid
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -29,7 +31,9 @@ app = Flask(__name__, static_folder=DIST_DIR, static_url_path='')
 # the caller's Origin instead of "*", letting ANY site make authenticated-looking
 # cross-origin requests. Wildcard origin is otherwise a deliberate choice for this
 # local single-user tool (no login system exists to scope it to).
-CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
+_cors_origins = [origin.strip() for origin in os.environ.get('ANNOTATEX_CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',') if origin.strip()]
+CORS(app, resources={r"/*": {"origins": _cors_origins}}, supports_credentials=False)
+app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('ANNOTATEX_MAX_CONTENT_LENGTH', 64 * 1024 * 1024))
 
 TEMP_DIR = os.path.join(tempfile.gettempdir(), 'annotatex_videos')
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -48,7 +52,7 @@ def get_dataset_folder(dataset_id: str) -> str:
     return os.path.join(DATASETS_DIR, sanitize_id(dataset_id, 'dataset'))
 
 def save_dataset_to_disk(project_data: dict) -> dict:
-    dataset_id = project_data.get('id') or f"proj_{int(time.time())}"
+    dataset_id = project_data.get('id') or f"proj_{uuid.uuid4().hex[:16]}"
     folder = get_dataset_folder(dataset_id)
     images_dir = os.path.join(folder, 'images')
     annotations_dir = os.path.join(folder, 'annotations')
@@ -139,12 +143,22 @@ def save_dataset_to_disk(project_data: dict) -> dict:
         'updatedAt': project_data['updatedAt'],
     }
 
-    with open(os.path.join(folder, 'config.json'), 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
+    def atomic_json_dump(path: str, value: dict) -> None:
+        temp_path = f"{path}.{uuid.uuid4().hex}.tmp"
+        try:
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(value, f, indent=2, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_path, path)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    atomic_json_dump(os.path.join(folder, 'config.json'), config)
 
     # 2. dataset.json (Unified full dataset state)
-    with open(os.path.join(folder, 'dataset.json'), 'w', encoding='utf-8') as f:
-        json.dump(project_data, f, indent=2, ensure_ascii=False)
+    atomic_json_dump(os.path.join(folder, 'dataset.json'), project_data)
 
     return project_data
 
@@ -188,14 +202,17 @@ def load_all_datasets_from_disk() -> list:
 def handle_preflight():
     if request.method == 'OPTIONS':
         res = Response(status=200)
-        res.headers["Access-Control-Allow-Origin"] = "*"
+        res.headers["Access-Control-Allow-Origin"] = _cors_origins[0]
         res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept"
         res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
         return res
 
 @app.after_request
 def after_request(response):
-    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Origin"] = response.headers.get("Access-Control-Allow-Origin", _cors_origins[0])
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Referrer-Policy'] = 'no-referrer'
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     return response
@@ -334,8 +351,13 @@ def predict_ai():
         return jsonify({'success': False, 'error': 'Falha ao decodificar imagem (formato base64 inválido).'}), 400
 
     model_id = data.get('modelId', 'yolov11n')
-    conf_threshold = float(data.get('confidence', data.get('confidenceThreshold', 0.25)))
-    iou_threshold = float(data.get('iou', data.get('iouThreshold', 0.45)))
+    try:
+        conf_threshold = float(data.get('confidence', data.get('confidenceThreshold', 0.25)))
+        iou_threshold = float(data.get('iou', data.get('iouThreshold', 0.45)))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Thresholds de confiança/IoU inválidos.'}), 400
+    if not 0.05 <= conf_threshold <= 0.99 or not 0.1 <= iou_threshold <= 0.9:
+        return jsonify({'success': False, 'error': 'Thresholds fora dos limites permitidos.'}), 400
     custom_classes = data.get('customClasses', [])
 
     result = run_ai_prediction(
@@ -371,6 +393,23 @@ def run_pipeline_code():
     data = request.get_json(silent=True) or {}
     code_str = data.get('code', '')
     annotations = data.get('annotations', [])
+    if not isinstance(code_str, str) or len(code_str) > 20000:
+        return jsonify({"success": False, "error": "Código ausente ou maior que 20 KB."}), 400
+    if not isinstance(annotations, list) or len(annotations) > 50000:
+        return jsonify({"success": False, "error": "Quantidade de anotações excede o limite permitido."}), 400
+
+    try:
+        tree = ast.parse(code_str, mode="exec")
+        forbidden = (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.While, ast.Try, ast.With, ast.AsyncWith, ast.Global, ast.Nonlocal, ast.Delete, ast.Raise)
+        for node in ast.walk(tree):
+            if isinstance(node, forbidden):
+                return jsonify({"success": False, "error": "Construção de código não permitida no pipeline."}), 400
+            if isinstance(node, ast.Name) and node.id.startswith("__"):
+                return jsonify({"success": False, "error": "Acesso a nomes internos não é permitido."}), 400
+            if isinstance(node, ast.Attribute) and node.attr.startswith("__"):
+                return jsonify({"success": False, "error": "Acesso a atributos internos não é permitido."}), 400
+    except SyntaxError as exc:
+        return jsonify({"success": False, "error": f"Código inválido: {exc.msg}"}), 400
 
     safe_globals = {
         # Without an explicit (even empty) '__builtins__' entry, Python auto-injects
@@ -597,6 +636,8 @@ def extract_youtube():
     url = (data.get('url') or data.get('video_url') or data.get('link') or '').strip()
     if not url:
         return jsonify({'error': 'URL de vídeo é obrigatória'}), 400
+    if not is_safe_remote_url(url):
+        return jsonify({"error": "URL bloqueada por política de segurança."}), 400
 
     filename = f"yt_{int(time.time())}_{abs(hash(url)) % 100000}.mp4"
     temp_video_path = os.path.join(TEMP_DIR, filename)
@@ -657,9 +698,13 @@ def download_and_extract_frames():
     url = (data.get('url') or data.get('video_url') or data.get('link') or '').strip()
     interval_sec = float(data.get('intervalSec') or data.get('interval') or 2.0)
     max_frames = int(data.get('maxFrames') or data.get('totalFrames') or data.get('totalCount') or 30)
+    if not 0.1 <= interval_sec <= 3600 or not 1 <= max_frames <= 500:
+        return jsonify({"error": "Intervalo ou quantidade de frames fora dos limites."}), 400
 
     if not url:
         return jsonify({'error': 'URL do vídeo é obrigatória'}), 400
+    if not is_safe_remote_url(url):
+        return jsonify({"error": "URL bloqueada por política de segurança."}), 400
 
     temp_video_path = os.path.join(TEMP_DIR, f'temp_video_{os.getpid()}_{int(cv2.getTickCount())}.mp4')
 
@@ -765,6 +810,8 @@ def live_stream_snapshot():
     """
     data = request.get_json(silent=True) or request.args or {}
     stream_url = (data.get('streamUrl') or data.get('stream_url') or data.get('url') or '').strip()
+    if stream_url and not is_safe_remote_url(stream_url):
+        return jsonify({"error": "URL de stream bloqueada por política de segurança."}), 400
     
     # If no stream URL is passed, try default webcam (device 0)
     target = stream_url if stream_url else 0

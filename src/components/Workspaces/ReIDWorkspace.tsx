@@ -13,6 +13,7 @@ import {
   Eye
 } from 'lucide-react';
 import { ReIDItem } from '../../types/dataset';
+import { scoreShipReID } from '../../utils/reidEnsemble';
 
 interface ReIDWorkspaceProps {
   items: ReIDItem[];
@@ -31,6 +32,7 @@ export const ReIDWorkspace: React.FC<ReIDWorkspaceProps> = ({
   const [search, setSearch] = useState('');
   const [newGlobalId, setNewGlobalId] = useState('');
   const [isCreatingIdentity, setIsCreatingIdentity] = useState(false);
+  const [activeQueryId, setActiveQueryId] = useState<string | null>(items.find((item) => item.isQuery)?.id || null);
 
   // Group items by Global Identity ID
   const identitiesMap = new Map<string, ReIDItem[]>();
@@ -43,6 +45,16 @@ export const ReIDWorkspace: React.FC<ReIDWorkspaceProps> = ({
   });
 
   const identityKeys = Array.from(identitiesMap.keys());
+  const queryCount = items.filter((item) => item.isQuery).length;
+  const crossCameraIdentities = identityKeys.filter((gid) =>
+    new Set((identitiesMap.get(gid) || []).map((item) => item.cameraId)).size > 1
+  ).length;
+  const embeddingReady = items.filter((item) => Object.keys(item.embeddingVectors || {}).length >= 2).length;
+  const reidReadiness = items.length === 0 ? 0 : Math.round((
+    (queryCount > 0 ? 30 : 0) +
+    (crossCameraIdentities / Math.max(1, identityKeys.length)) * 40 +
+    (embeddingReady / items.length) * 30
+  ));
 
   const handleCreateNewIdentity = () => {
     if (!newGlobalId.trim()) return;
@@ -52,10 +64,13 @@ export const ReIDWorkspace: React.FC<ReIDWorkspaceProps> = ({
   };
 
   const handleToggleQueryStatus = (item: ReIDItem) => {
+    const willBeQuery = !item.isQuery;
     onUpdateItem({
       ...item,
-      isQuery: !item.isQuery,
+      isQuery: willBeQuery,
     });
+    if (willBeQuery) setActiveQueryId(item.id);
+    else if (activeQueryId === item.id) setActiveQueryId(null);
   };
 
   const handleReassignIdentity = (item: ReIDItem, newId: string) => {
@@ -65,10 +80,14 @@ export const ReIDWorkspace: React.FC<ReIDWorkspaceProps> = ({
     });
   };
 
+  const activeQuery = items.find((item) => item.id === activeQueryId && item.isQuery) || null;
   const filteredItems = items.filter((item) => {
     if (selectedIdentity !== 'all' && item.globalId !== selectedIdentity) return false;
     if (search && !item.name.toLowerCase().includes(search.toLowerCase()) && !item.globalId.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
+  }).sort((left, right) => {
+    if (!activeQuery) return 0;
+    return scoreShipReID(activeQuery, right).score - scoreShipReID(activeQuery, left).score;
   });
 
   return (
@@ -170,14 +189,48 @@ export const ReIDWorkspace: React.FC<ReIDWorkspaceProps> = ({
           </div>
 
           <div className="flex items-center gap-2 text-xs text-slate-400">
+            {queryCount > 0 && (
+              <select
+                value={activeQueryId || ''}
+                onChange={(event) => setActiveQueryId(event.target.value || null)}
+                className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-amber-300"
+                title="Query usada para ordenar a galeria pelo ensemble de Re-ID"
+              >
+                <option value="">Sem ranking</option>
+                {items.filter((item) => item.isQuery).map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+            )}
             <span>Clique na badge <strong className="text-amber-400">Probe / Query</strong> para alternar o modo de teste</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2 border-b border-slate-800 bg-slate-950/70 px-5 py-3 lg:grid-cols-[1fr_auto]">
+          <div className="flex items-start gap-2">
+            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-indigo-400" />
+            <div>
+              <p className="text-xs font-semibold text-slate-200">Ensemble recomendado para Re-ID de navios</p>
+              <p className="mt-0.5 text-[10px] leading-relaxed text-slate-500">
+                DINOv2 35% + backbone especializado 30% + CLIP 15% + IMO/MMSI/tipo 15% + tempo 5%.
+                O score renormaliza automaticamente quando um sinal não está disponível.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 text-[10px]">
+            <span className="rounded-lg border border-slate-800 bg-slate-900 px-2 py-1 text-slate-400">
+              Prontidão <strong className="text-indigo-300">{reidReadiness}%</strong>
+            </span>
+            <span className="text-slate-500">{queryCount} queries · {crossCameraIdentities}/{identityKeys.length} IDs multicâmera · {embeddingReady} com 2+ embeddings</span>
           </div>
         </div>
 
         {/* Matrix Grid */}
         <div className="flex-1 overflow-y-auto p-5 scrollbar-thin">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {filteredItems.map((item) => (
+            {filteredItems.map((item) => {
+              const ranking = activeQuery && item.id !== activeQuery.id ? scoreShipReID(activeQuery, item) : null;
+              return (
               <div
                 key={item.id}
                 className="group relative flex flex-col rounded-2xl overflow-hidden border border-slate-800 bg-slate-900 transition-all hover:border-slate-700"
@@ -203,6 +256,15 @@ export const ReIDWorkspace: React.FC<ReIDWorkspaceProps> = ({
                   >
                     {item.isQuery ? 'Probe (Query)' : 'Gallery'}
                   </button>
+
+                  {ranking && ranking.evidenceWeight > 0 && (
+                    <div
+                      className="absolute bottom-2 left-2 rounded-full border border-indigo-400/50 bg-slate-950/85 px-2 py-0.5 text-[10px] font-bold text-indigo-300"
+                      title={`Evidências: ${Object.keys(ranking.components).join(', ')}`}
+                    >
+                      Match {Math.round(ranking.score * 100)}%
+                    </div>
+                  )}
                 </div>
 
                 {/* Info & Identity Dropdown */}
@@ -231,7 +293,8 @@ export const ReIDWorkspace: React.FC<ReIDWorkspaceProps> = ({
                   </select>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>

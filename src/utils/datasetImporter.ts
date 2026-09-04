@@ -62,6 +62,13 @@ export async function parseImportFiles(
   if (fileArray.length === 0) {
     throw new Error('Nenhum arquivo fornecido para importação.');
   }
+  if (fileArray.length > 10000) {
+    throw new Error('A importação está limitada a 10.000 arquivos por operação.');
+  }
+  const totalBytes = fileArray.reduce((sum, file) => sum + file.size, 0);
+  if (totalBytes > 2 * 1024 * 1024 * 1024) {
+    throw new Error('O tamanho total da importação não pode exceder 2 GB.');
+  }
 
   // 1. Check if a ZIP file is present
   const zipFile = fileArray.find((f) => f.name.toLowerCase().endsWith('.zip'));

@@ -56,6 +56,12 @@ export interface AIPredictionConfig {
   overwriteExisting: boolean;
   customClassPrompts?: string[]; // for zero-shot
   device?: 'auto' | 'cpu' | 'cuda';
+  /** Minimum number of distinct models that must agree in ensemble mode. */
+  ensembleMinVotes?: number;
+  /** Relative reliability of each model. Confidence is multiplied by this value during fusion. */
+  ensembleModelWeights?: Record<string, number>;
+  /** Spatial overlap required to treat predictions as the same object. */
+  ensembleFusionIou?: number;
 }
 
 export interface AIDetectionItem {

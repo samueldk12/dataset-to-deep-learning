@@ -8,6 +8,7 @@ import io
 import time
 import base64
 import urllib.request
+import math
 import numpy as np
 import cv2
 from typing import List, Dict, Any, Optional
@@ -284,6 +285,38 @@ def run_ai_prediction(
         allowed = {c.strip().lower() for c in custom_classes if c and c.strip()}
         if allowed:
             detections = [d for d in detections if d.get("className", "").strip().lower() in allowed]
+
+    # Normalize model output before it reaches the editor/exporters. This prevents
+    # NaN, inverted boxes, out-of-image points and low-confidence leftovers from
+    # becoming invalid training labels.
+    normalized: List[Dict[str, Any]] = []
+    for detection in detections:
+        confidence = float(detection.get("confidence", 0.0))
+        points = detection.get("points") or []
+        if not math.isfinite(confidence) or confidence < conf_threshold or len(points) < (1 if detection.get("type") == "keypoint" else 2):
+            continue
+        clean_points = []
+        valid = True
+        for point in points:
+            try:
+                x = float(point["x"])
+                y = float(point["y"])
+                if not math.isfinite(x) or not math.isfinite(y):
+                    valid = False
+                    break
+                clean_points.append({"x": max(0.0, min(float(w), x)), "y": max(0.0, min(float(h), y))})
+            except (KeyError, TypeError, ValueError):
+                valid = False
+                break
+        if not valid:
+            continue
+        if detection.get("type") == "bbox":
+            xs = [p["x"] for p in clean_points]
+            ys = [p["y"] for p in clean_points]
+            if max(xs) - min(xs) < 2 or max(ys) - min(ys) < 2:
+                continue
+        normalized.append({**detection, "confidence": round(min(1.0, confidence), 3), "points": clean_points})
+    detections = normalized
 
     elapsed_ms = round((time.time() - start_time) * 1000, 1)
     return {

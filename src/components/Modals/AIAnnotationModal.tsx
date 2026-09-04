@@ -25,6 +25,11 @@ import { DatasetClass, DatasetImage, DatasetProject } from '../../types/dataset'
 import { AIModelInfo, AIPredictionConfig, AIModelType, AIAnnotationOutputType, AIModelTask } from '../../types/aiModel';
 import { fetchAvailableAIModels, predictImageWithModels } from '../../utils/aiClient';
 import { addCustomModel, deleteCustomModel } from '../../utils/customModels';
+import {
+  DETECTION_ENSEMBLE_PRESETS,
+  DetectionEnsemblePreset,
+  resolvePresetModels,
+} from '../../utils/ensemblePresets';
 
 interface AIAnnotationModalProps {
   isOpen: boolean;
@@ -87,6 +92,10 @@ export const AIAnnotationModal: React.FC<AIAnnotationModalProps> = ({
   const [annotationTypeFilter, setAnnotationTypeFilter] = useState<AIAnnotationOutputType | 'all'>('all');
   const [confidence, setConfidence] = useState(0.25);
   const [iou, setIou] = useState(0.45);
+  const [ensembleMinVotes, setEnsembleMinVotes] = useState(1);
+  const [ensembleModelWeights, setEnsembleModelWeights] = useState<Record<string, number>>({});
+  const [ensembleFusionIou, setEnsembleFusionIou] = useState(0.5);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [autoAddNewClasses, setAutoAddNewClasses] = useState(true);
   const [overwriteExisting, setOverwriteExisting] = useState(false);
   const [showAddCustomModel, setShowAddCustomModel] = useState(false);
@@ -136,9 +145,30 @@ export const AIAnnotationModal: React.FC<AIAnnotationModalProps> = ({
   if (!isOpen) return null;
 
   const toggleModelSelection = (id: string) => {
-    setSelectedModelIds((prev) =>
-      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
-    );
+    const target = models.find((model) => model.id === id);
+    if (!target) return;
+    setSelectedPresetId(null);
+    setEnsembleModelWeights({});
+    setSelectedModelIds((prev) => {
+      if (prev.includes(id)) return prev.filter((modelId) => modelId !== id);
+      const selectedTypes = models
+        .filter((model) => prev.includes(model.id))
+        .map((model) => model.annotationType);
+      return selectedTypes.some((type) => type !== target.annotationType) ? [id] : [...prev, id];
+    });
+  };
+
+  const applyPreset = (preset: DetectionEnsemblePreset) => {
+    const resolved = resolvePresetModels(preset, models);
+    if (resolved.length === 0) return;
+    setSelectedModelIds(resolved.map((model) => model.id));
+    setAnnotationTypeFilter(preset.annotationType);
+    setConfidence(preset.confidence);
+    setIou(preset.inferenceIou);
+    setEnsembleFusionIou(preset.fusionIou);
+    setEnsembleMinVotes(Math.min(preset.minVotes, resolved.length));
+    setEnsembleModelWeights(Object.fromEntries(resolved.map((model) => [model.id, preset.modelWeights[model.id] ?? 1])));
+    setSelectedPresetId(preset.id);
   };
 
   const selectedModels = models.filter((m) => selectedModelIds.includes(m.id));
@@ -150,6 +180,9 @@ export const AIAnnotationModal: React.FC<AIAnnotationModalProps> = ({
     iouThreshold: iou,
     autoAddNewClasses,
     overwriteExisting,
+    ensembleMinVotes,
+    ensembleModelWeights,
+    ensembleFusionIou,
   });
 
   const handleRunCurrentImage = async () => {
@@ -188,26 +221,42 @@ export const AIAnnotationModal: React.FC<AIAnnotationModalProps> = ({
     let accumulatedNewClasses: DatasetClass[] = [];
     const config = buildConfig();
 
-    for (let i = 0; i < unannotatedImages.length; i++) {
-      const img = unannotatedImages[i];
-      setBatchStatus(`Anotando imagem ${i + 1}/${unannotatedImages.length}: ${img.name}...`);
-      setBatchProgress(Math.round(((i + 1) / unannotatedImages.length) * 100));
+    const concurrency = 3;
+    try {
+      for (let start = 0; start < unannotatedImages.length; start += concurrency) {
+        const batch = unannotatedImages.slice(start, start + concurrency);
+        setBatchStatus(`Anotando imagens ${start + 1}-${Math.min(start + batch.length, unannotatedImages.length)}/${unannotatedImages.length}...`);
 
-      const res = await predictImageWithModels(
-        img,
-        selectedModels,
-        config,
-        [...project.classes, ...accumulatedNewClasses]
-      );
-      results.push({ imageId: img.id, annotations: res.annotations });
-      if (res.newClasses.length > 0) {
-        accumulatedNewClasses = [...accumulatedNewClasses, ...res.newClasses];
+        const batchResults = await Promise.all(batch.map(async (img) => {
+          try {
+            const res = await predictImageWithModels(
+              img,
+              selectedModels,
+              config,
+              [...project.classes, ...accumulatedNewClasses]
+            );
+            return { imageId: img.id, annotations: res.annotations, newClasses: res.newClasses };
+          } catch (error) {
+            console.error(`Falha ao anotar ${img.name}`, error);
+            return { imageId: img.id, annotations: [], newClasses: [] as DatasetClass[] };
+          }
+        }));
+
+        results.push(...batchResults.map(({ imageId, annotations }) => ({ imageId, annotations })));
+        const discovered = batchResults.flatMap((item) => item.newClasses);
+        const knownNames = new Set([...project.classes, ...accumulatedNewClasses].map((item) => item.name.toLowerCase()));
+        accumulatedNewClasses = [
+          ...accumulatedNewClasses,
+          ...discovered.filter((item) => !knownNames.has(item.name.toLowerCase())),
+        ];
+        setBatchProgress(Math.round((Math.min(start + batch.length, unannotatedImages.length) / unannotatedImages.length) * 100));
       }
-    }
 
-    onBatchApplyAnnotations(results, accumulatedNewClasses);
-    setIsBatchRunning(false);
-    setBatchStatus('Processamento em lote concluído com sucesso!');
+      onBatchApplyAnnotations(results, accumulatedNewClasses);
+      setBatchStatus('Processamento em lote concluído com sucesso!');
+    } finally {
+      setIsBatchRunning(false);
+    }
   };
 
   return (
@@ -275,6 +324,39 @@ export const AIAnnotationModal: React.FC<AIAnnotationModalProps> = ({
                 <PlusCircle className="w-3.5 h-3.5" />
                 Adicionar Modelo Customizado
               </button>
+            </div>
+
+            <div className="mb-3 rounded-xl border border-indigo-900/60 bg-indigo-950/20 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-indigo-300">
+                  Presets de ensemble recomendados
+                </span>
+                <span className="text-[10px] text-slate-500">Aplica pesos, consenso e thresholds</span>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {DETECTION_ENSEMBLE_PRESETS.map((preset) => {
+                  const availableCount = resolvePresetModels(preset, models).length;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      disabled={availableCount === 0}
+                      onClick={() => applyPreset(preset)}
+                      className={`rounded-lg border p-2 text-left transition-colors disabled:opacity-40 ${
+                        selectedPresetId === preset.id
+                          ? 'border-indigo-400 bg-indigo-500/20'
+                          : 'border-slate-800 bg-slate-950/60 hover:border-indigo-700'
+                      }`}
+                    >
+                      <span className="block text-xs font-semibold text-slate-200">{preset.name}</span>
+                      <span className="mt-0.5 block text-[10px] leading-relaxed text-slate-500">{preset.description}</span>
+                      <span className="mt-1 block text-[10px] font-mono text-indigo-400">
+                        {availableCount} modelo(s) · {preset.minVotes > 1 ? `consenso ${preset.minVotes}` : 'alta cobertura'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2 mb-3">
@@ -462,12 +544,27 @@ export const AIAnnotationModal: React.FC<AIAnnotationModalProps> = ({
             </div>
 
             {isEnsembleMode && (
+              <label className="flex items-center gap-2 text-xs text-slate-300 bg-emerald-950/20 border border-emerald-900/50 rounded-lg px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={ensembleMinVotes >= 2}
+                  onChange={(event) => setEnsembleMinVotes(event.target.checked ? 2 : 1)}
+                  className="rounded bg-slate-900 border-slate-700 text-emerald-600 focus:ring-0"
+                />
+                <span>
+                  Exigir consenso de 2 modelos
+                  <span className="block text-[10px] text-slate-500">Remove detecções isoladas e reduz falsos positivos. Fusão IoU: {Math.round(ensembleFusionIou * 100)}%.</span>
+                </span>
+              </label>
+            )}
+
+            {isEnsembleMode && (
               <div className="flex items-start gap-2 text-[11px] text-emerald-300 bg-emerald-950/20 border border-emerald-800/40 p-2.5 rounded-lg">
                 <Users className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 <span>
                   Com {selectedModels.length} modelos selecionados, cada objeto detectado por mais de um modelo terá sua
                   classe final decidida por votação (maioria, com empate resolvido pela confiança somada). Detecções sem
-                  sobreposição de outros modelos são mantidas como estão.
+                  sobreposição são {ensembleMinVotes > 1 ? 'removidas pelo consenso configurado' : 'mantidas para revisão'}.
                 </span>
               </div>
             )}

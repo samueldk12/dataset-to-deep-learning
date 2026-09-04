@@ -37,6 +37,7 @@ import {
   LLMDatasetItem
 } from '../../types/dataset';
 import { GeminiNLPAssistantModal } from './GeminiNLPAssistantModal';
+import { auditNLPProject, qualityScore } from '../../utils/datasetQuality';
 
 interface NLPWorkspaceProps {
   project: DatasetProject;
@@ -74,6 +75,11 @@ export const NLPWorkspace: React.FC<NLPWorkspaceProps> = ({
 
   // 6. GEMINI ASSISTANT MODAL STATE
   const [isGeminiModalOpen, setIsGeminiModalOpen] = useState(false);
+  const nlpQualityIssues = auditNLPProject(project);
+  const nlpItemCount = (project.textItems?.length || 0) + (project.qaItems?.length || 0) +
+    (project.sqlItems?.length || 0) + (project.cotItems?.length || 0) +
+    (project.toolCallItems?.length || 0) + (project.ragItems?.length || 0);
+  const nlpQualityScore = qualityScore(nlpItemCount, nlpQualityIssues);
 
   const handleApplyGeneratedData = (tType: string, newItems: any[]) => {
     if (!newItems.length) return;
@@ -315,6 +321,19 @@ export const NLPWorkspace: React.FC<NLPWorkspaceProps> = ({
                 IA
               </span>
             </button>
+            <div
+              className={`mt-2 rounded-xl border p-2.5 text-[10px] ${
+                nlpQualityIssues.some((issue) => issue.severity === 'error')
+                  ? 'border-amber-800/60 bg-amber-950/20 text-amber-300'
+                  : 'border-emerald-800/60 bg-emerald-950/20 text-emerald-300'
+              }`}
+              title={nlpQualityIssues.slice(0, 6).map((issue) => issue.message).join('\n') || 'Nenhum problema estrutural encontrado'}
+            >
+              <span className="font-semibold">Auditoria do dataset: {nlpQualityScore}%</span>
+              <span className="mt-0.5 block text-slate-500">
+                {nlpQualityIssues.length} alerta(s): duplicatas, campos obrigatórios e offsets são verificados.
+              </span>
+            </div>
           </div>
         </div>
 

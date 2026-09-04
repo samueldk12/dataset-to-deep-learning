@@ -7,7 +7,7 @@
 export const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 export const GEMINI_AUDIO_MODEL = 'gemini-2.5-flash';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.MODE === 'test' ? 'http://localhost:5000/api' : '/api';
 
 export function getGeminiApiKey(): string {
   // Check localStorage first (user-defined), then import.meta.env

@@ -4,7 +4,7 @@ const DB_NAME = 'AnnotateX_DB';
 const DB_VERSION = 1;
 const STORE_NAME = 'projects';
 const KEY_CURRENT = 'current_project';
-const API_BASE_URL = 'http://localhost:5000/api/datasets';
+const API_BASE_URL = import.meta.env.MODE === 'test' ? 'http://localhost:5000/api/datasets' : '/api/datasets';
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {

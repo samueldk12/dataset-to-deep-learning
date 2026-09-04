@@ -23,6 +23,7 @@ import {
 import { DatasetProject, AudioDatasetItem } from '../../types/dataset';
 import { analyzeAudioWithGemini, generateSyntheticNLPData } from '../../utils/geminiClient';
 import { RefreshCw, Wand2 } from 'lucide-react';
+import { auditAudioDataset, qualityScore } from '../../utils/datasetQuality';
 
 interface AudioWorkspaceProps {
   project: DatasetProject;
@@ -47,6 +48,8 @@ export const AudioWorkspace: React.FC<AudioWorkspaceProps> = ({
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const audioItems = project.audioItems || [];
+  const qualityIssues = auditAudioDataset(audioItems);
+  const datasetQuality = qualityScore(audioItems.length, qualityIssues);
   const activeAudio = audioItems.find((a) => a.id === activeItemId) || audioItems[0] || null;
 
   const handleTogglePlay = () => {
@@ -224,7 +227,7 @@ export const AudioWorkspace: React.FC<AudioWorkspaceProps> = ({
             className="w-full py-2 rounded-lg bg-gradient-to-r from-purple-600/30 to-blue-600/30 hover:from-purple-600/40 hover:to-blue-600/40 border border-purple-500/40 text-purple-300 font-semibold text-xs flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
           >
             <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-            <span>+ 3 Áudios Sintéticos (Gemini)</span>
+            <span>+ 3 Roteiros de Áudio (Gemini)</span>
           </button>
 
           {onOpenExportModal && (
@@ -246,6 +249,16 @@ export const AudioWorkspace: React.FC<AudioWorkspaceProps> = ({
             {/* Top Player Bar */}
             <div className="h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
+                <div
+                  className={`rounded-xl border px-3 py-1.5 text-[10px] ${
+                    qualityIssues.some((issue) => issue.severity === 'error')
+                      ? 'border-amber-700/60 bg-amber-950/30 text-amber-300'
+                      : 'border-emerald-800/60 bg-emerald-950/30 text-emerald-300'
+                  }`}
+                  title={qualityIssues.slice(0, 5).map((issue) => issue.message).join('\n') || 'Nenhum problema estrutural encontrado'}
+                >
+                  Qualidade <strong>{datasetQuality}%</strong> · {qualityIssues.length} alerta(s)
+                </div>
                 <button
                   onClick={handleTogglePlay}
                   className="p-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-500/25 transition-transform active:scale-95"

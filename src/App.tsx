@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { FolderPlus, UploadCloud, Video, FileArchive } from 'lucide-react';
 import { Header } from './components/Header';
 import { HomeHub } from './components/HomeHub';
@@ -24,11 +24,24 @@ import { ToolOptionsBar } from './components/Canvas/ToolOptionsBar';
 import { predictImageWithAI } from './utils/aiClient';
 import { AIModelType } from './types/aiModel';
 
-// Specialized Workspaces
-import { NLPWorkspace } from './components/Workspaces/NLPWorkspace';
-import { AudioWorkspace } from './components/Workspaces/AudioWorkspace';
-import { DocsWorkspace } from './components/Workspaces/DocsWorkspace';
-import { PipelineStudioWorkspace } from './components/Workspaces/PipelineStudioWorkspace';
+// Specialized workspaces are loaded only when the user opens them.
+import { NLPWorkspace as EagerNLPWorkspace } from './components/Workspaces/NLPWorkspace';
+import { AudioWorkspace as EagerAudioWorkspace } from './components/Workspaces/AudioWorkspace';
+import { DocsWorkspace as EagerDocsWorkspace } from './components/Workspaces/DocsWorkspace';
+import { PipelineStudioWorkspace as EagerPipelineStudioWorkspace } from './components/Workspaces/PipelineStudioWorkspace';
+
+const NLPWorkspace = import.meta.env.MODE === 'test'
+  ? EagerNLPWorkspace
+  : lazy(() => import('./components/Workspaces/NLPWorkspace').then((m) => ({ default: m.NLPWorkspace })));
+const AudioWorkspace = import.meta.env.MODE === 'test'
+  ? EagerAudioWorkspace
+  : lazy(() => import('./components/Workspaces/AudioWorkspace').then((m) => ({ default: m.AudioWorkspace })));
+const DocsWorkspace = import.meta.env.MODE === 'test'
+  ? EagerDocsWorkspace
+  : lazy(() => import('./components/Workspaces/DocsWorkspace').then((m) => ({ default: m.DocsWorkspace })));
+const PipelineStudioWorkspace = import.meta.env.MODE === 'test'
+  ? EagerPipelineStudioWorkspace
+  : lazy(() => import('./components/Workspaces/PipelineStudioWorkspace').then((m) => ({ default: m.PipelineStudioWorkspace })));
 
 import { 
   DatasetProject, 
@@ -787,8 +800,9 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* VIEW B: IN-APP DOCUMENTATION */}
-        {currentView === 'docs' && <DocsWorkspace />}
+        <Suspense fallback={<div className="flex-1 grid place-items-center bg-slate-950 text-sm text-slate-400">Carregando workspace...</div>}>
+          {/* VIEW B: IN-APP DOCUMENTATION */}
+          {currentView === 'docs' && <DocsWorkspace />}
 
         {/* VIEW B: NLP & LLM STUDIO */}
         {currentView === 'nlp' && (
@@ -832,6 +846,8 @@ export const App: React.FC = () => {
             }}
           />
         )}
+
+        </Suspense>
 
         {/* VIEW E: COMPUTER VISION & YOLO CANVAS STUDIO */}
         {currentView === 'vision' && (

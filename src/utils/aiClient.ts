@@ -5,7 +5,7 @@ import { getBoundingBox, calculateBBoxIoU, distance } from './geometry';
 import { COCO_80_CLASSES } from './cocoClasses';
 import { loadCustomModels, customModelToAIModelInfo } from './customModels';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.MODE === 'test' ? 'http://localhost:5000/api' : '/api';
 
 const BUILTIN_MODELS_FALLBACK: AIModelInfo[] = [
   {
@@ -221,6 +221,7 @@ const SYNONYM_GROUPS: Record<string, string[]> = {
   car: ['carro', 'automóvel', 'veículo', 'vehicle', 'auto'],
   dog: ['cachorro', 'cão', 'pet'],
   cat: ['gato', 'felino'],
+  ship: ['boat', 'vessel', 'navio', 'barco', 'embarcação'],
   truck: ['caminhão', 'veículo pesado'],
   bus: ['ônibus', 'transporte'],
   chair: ['cadeira', 'assento'],
@@ -337,7 +338,12 @@ export async function predictWithModel(
 }
 
 /** Only same-type detections can be sensibly compared spatially. */
-function detectionsAreSimilar(a: AIDetectionItem, b: AIDetectionItem, imageDiagonal: number): boolean {
+function detectionsAreSimilar(
+  a: AIDetectionItem,
+  b: AIDetectionItem,
+  imageDiagonal: number,
+  fusionIou: number
+): boolean {
   if (a.type !== b.type) return false;
 
   if (a.type === 'keypoint') {
@@ -350,7 +356,7 @@ function detectionsAreSimilar(a: AIDetectionItem, b: AIDetectionItem, imageDiago
     [{ x: boxA.x, y: boxA.y }, { x: boxA.x + boxA.width, y: boxA.y + boxA.height }],
     [{ x: boxB.x, y: boxB.y }, { x: boxB.x + boxB.width, y: boxB.y + boxB.height }]
   );
-  return iou >= 0.5;
+  return iou >= fusionIou;
 }
 
 /**
@@ -365,7 +371,10 @@ function detectionsAreSimilar(a: AIDetectionItem, b: AIDetectionItem, imageDiago
 export function mergeDetectionsEnsemble(
   perModel: Array<{ modelId: string; detections: AIDetectionItem[] }>,
   imageWidth: number,
-  imageHeight: number
+  imageHeight: number,
+  minimumVotes = 1,
+  modelWeights: Record<string, number> = {},
+  fusionIou = 0.5
 ): AIDetectionItem[] {
   const all: Array<AIDetectionItem & { __modelId: string }> = [];
   for (const { modelId, detections } of perModel) {
@@ -388,35 +397,57 @@ export function mergeDetectionsEnsemble(
       if (used.has(j)) continue;
       const candidate = sorted[j];
       // One vote per model per cluster: two detections from the SAME model are never merged.
-      if (candidate.__modelId === seed.__modelId) continue;
-      if (detectionsAreSimilar(seed, candidate, imageDiagonal)) {
+      if (cluster.some((member) => member.__modelId === candidate.__modelId)) continue;
+      if (detectionsAreSimilar(seed, candidate, imageDiagonal, fusionIou)) {
         cluster.push(candidate);
         used.add(j);
       }
     }
 
-    const votes = new Map<string, { count: number; totalConfidence: number; displayName: string }>();
+    const votes = new Map<string, { count: number; weightedConfidence: number; displayName: string }>();
     for (const member of cluster) {
       const key = canonicalClassKey(member.className);
-      const entry = votes.get(key) || { count: 0, totalConfidence: 0, displayName: member.className };
+      const entry = votes.get(key) || { count: 0, weightedConfidence: 0, displayName: member.className };
       entry.count += 1;
-      entry.totalConfidence += member.confidence;
+      entry.weightedConfidence += member.confidence * Math.max(0.01, modelWeights[member.__modelId] ?? 1);
       votes.set(key, entry);
     }
 
-    let winner = { count: -1, totalConfidence: -1, displayName: seed.className };
+    let winner = { count: -1, weightedConfidence: -1, displayName: seed.className };
     for (const entry of votes.values()) {
-      if (entry.count > winner.count || (entry.count === winner.count && entry.totalConfidence > winner.totalConfidence)) {
+      if (entry.count > winner.count || (entry.count === winner.count && entry.weightedConfidence > winner.weightedConfidence)) {
         winner = entry;
       }
     }
 
+    if (winner.count < Math.max(1, minimumVotes)) continue;
+
+    const memberWeight = (member: typeof seed) =>
+      Math.max(0, member.confidence) * Math.max(0.01, modelWeights[member.__modelId] ?? 1);
+    const totalConfidence = cluster.reduce((sum, member) => sum + memberWeight(member), 0) || 1;
+    const bestMember = cluster.reduce((best, member) => memberWeight(member) > memberWeight(best) ? member : best, cluster[0]);
+    let fusedPoints = bestMember.points;
+    if (seed.type === 'bbox' && cluster.every((member) => member.points.length >= 2)) {
+      fusedPoints = [0, 1].map((pointIndex) => ({
+        x: cluster.reduce((sum, member) => sum + member.points[pointIndex].x * memberWeight(member), 0) / totalConfidence,
+        y: cluster.reduce((sum, member) => sum + member.points[pointIndex].y * memberWeight(member), 0) / totalConfidence,
+      }));
+    } else if (seed.type === 'keypoint' && cluster.every((member) => member.points.length === bestMember.points.length)) {
+      fusedPoints = bestMember.points.map((_, pointIndex) => ({
+        x: cluster.reduce((sum, member) => sum + member.points[pointIndex].x * memberWeight(member), 0) / totalConfidence,
+        y: cluster.reduce((sum, member) => sum + member.points[pointIndex].y * memberWeight(member), 0) / totalConfidence,
+      }));
+    }
+
     merged.push({
       className: winner.displayName,
-      confidence: cluster.reduce((sum, m) => sum + m.confidence, 0) / cluster.length,
+      confidence: Math.min(0.99, totalConfidence / cluster.reduce(
+        (sum, member) => sum + Math.max(0.01, modelWeights[member.__modelId] ?? 1),
+        0
+      )),
       type: seed.type,
-      points: seed.points,
-      keypointNames: seed.keypointNames,
+      points: fusedPoints,
+      keypointNames: bestMember.keypointNames,
     });
   }
 
@@ -448,7 +479,9 @@ export async function predictImageWithModels(
   const perModelErrors = results
     .map((r, i) => ({ modelId: models[i].id, error: r.error || '' }))
     .filter((e) => e.error);
-  const totalInferenceMs = results.reduce((sum, r) => sum + r.inferenceTimeMs, 0);
+  // Models are requested concurrently; wall-clock time is the slowest model,
+  // not the sum of all model durations.
+  const totalInferenceMs = Math.max(...results.map((r) => r.inferenceTimeMs), 0);
 
   let detections: AIDetectionItem[];
   if (models.length === 1) {
@@ -457,7 +490,10 @@ export async function predictImageWithModels(
     detections = mergeDetectionsEnsemble(
       models.map((m, i) => ({ modelId: m.id, detections: results[i].detections })),
       image.width || 800,
-      image.height || 600
+      image.height || 600,
+      config.ensembleMinVotes || 1,
+      config.ensembleModelWeights,
+      config.ensembleFusionIou ?? 0.5
     );
   }
 
